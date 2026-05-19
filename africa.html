@@ -748,30 +748,65 @@ function initMap(topology) {
     .attr('stroke', '#5a4630')
     .attr('stroke-width', '0.6')
     .style('cursor', 'pointer')
-    .on('click', (event, d) => handleMapClick(d.iso));
 
-  // D3 zoom: pinch-to-zoom + scroll-to-zoom; single-finger tap still fires click handlers
+  // ── Zoom + Pan + Tap ─────────────────────────────────────────────────────
+  // D3 zoom handles all motion: 1 finger = pan, 2 fingers = pinch-zoom,
+  // mouse wheel = zoom. No filter — all pointer events pass through.
   _zoom = d3.zoom()
     .scaleExtent([1, 14])
-    .filter(event => {
-      if (event.type === 'wheel') return true;
-      if (event.type === 'touchstart') return event.touches.length >= 2;
-      if (event.type === 'touchmove')  return event.touches.length >= 2;
-      if (event.type === 'touchend')   return true;
-      if (event.touches !== undefined) return event.touches.length >= 2;
-      return !event.button; // allow mouse drag to pan on desktop
-    })
     .on('zoom', event => {
       _g.attr('transform', event.transform);
       _g.selectAll('path[data-iso]')
         .attr('stroke-width', (0.6 / event.transform.k).toFixed(3));
     });
-  _svg.call(_zoom).on('dblclick.zoom', null); // disable double-click zoom
+  _svg.call(_zoom).on('dblclick.zoom', null);
 
-  // Prevent the whole page from zooming when user pinches over the map
+  // Prevent browser page-zoom when pinching over the map
   document.getElementById('map').addEventListener('touchmove', e => {
     if (e.touches.length >= 2) e.preventDefault();
   }, { passive: false });
+
+  // ── Tap detection (runs alongside D3 zoom) ────────────────────────────────
+  // Tap = 1 finger + movement <10px + duration <600ms → select country.
+  // More movement = pan → D3 zoom handles it, no country selected.
+  let _activeTouches = new Set(), _tapData = null;
+  _svg
+    .on('pointerdown.tap', ev => {
+      if (ev.pointerType !== 'touch') return;
+      _activeTouches.add(ev.pointerId);
+      if (_activeTouches.size === 1)
+        _tapData = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+      else
+        _tapData = null; // 2nd finger = pinch, cancel any pending tap
+    })
+    .on('pointermove.tap', ev => {
+      if (!_tapData || ev.pointerType !== 'touch') return;
+      if (Math.hypot(ev.clientX - _tapData.x, ev.clientY - _tapData.y) > 10)
+        _tapData = null; // drifted = pan, not a tap
+    })
+    .on('pointerup.tap', ev => {
+      if (ev.pointerType !== 'touch') return;
+      _activeTouches.delete(ev.pointerId);
+      if (!_tapData) return;
+      const td = _tapData; _tapData = null;
+      if (Date.now() - td.t > 600) return; // held too long = not a tap
+      const hit = document.elementFromPoint(td.x, td.y);
+      const iso = hit?.getAttribute('data-iso');
+      if (iso) handleMapClick(iso);
+    })
+    .on('pointercancel.tap', ev => {
+      if (ev.pointerType !== 'touch') return;
+      _activeTouches.delete(ev.pointerId);
+      _tapData = null;
+    });
+
+  // Desktop mouse: D3 suppresses click after drag, so this only fires on
+  // genuine clicks (not after panning with mouse).
+  _g.selectAll('path[data-iso]')
+    .on('click', (ev, d) => {
+      if (ev.pointerType === 'touch') return; // touch handled above
+      handleMapClick(d.iso);
+    });
 
   // Floating label shown when zoomed to a wrong-answer country
   _svg.append('text').attr('class', 'map-label')
