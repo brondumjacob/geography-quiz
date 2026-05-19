@@ -700,7 +700,15 @@ function getCountryStates() {
 // ─────────────────────────────────────────────────────────────────────────────
 // D3 Map — SVG-based choropleth, no hidden runtime fetches
 // ─────────────────────────────────────────────────────────────────────────────
-let _svg = null, _g = null, _mapW = 0, _mapH = 0, _zoomedIso = null, _zoom = null;
+let _svg = null, _g = null, _mapW = 0, _mapH = 0, _zoomedIso = null, _zoom = null, _projection = null;
+
+// ── Small island nations: dot markers + auto-zoom ───────────────────────────
+const SMALL_COUNTRIES = {
+  'CPV':{lat:16.0, lon:-24.0}, 'COM':{lat:-11.6, lon:43.4},
+  'SYC':{lat:-4.7, lon:55.5},  'MUS':{lat:-20.3, lon:57.6},
+  'STP':{lat:0.2,  lon:6.6},
+};
+const DOT_R = 6;
 
 function initMap(topology) {
   const mapEl = document.getElementById('map');
@@ -723,6 +731,7 @@ function initMap(topology) {
     .fitExtent([[8, 8], [_mapW - 8, _mapH - 8]],
       { type: 'FeatureCollection', features });
   const pathGen = d3.geoPath().projection(projection);
+  _projection = projection;
 
   // Build SVG — viewBox lets it reflow responsively with no JS resize calls needed
   _svg = d3.select(mapEl).append('svg')
@@ -747,7 +756,20 @@ function initMap(topology) {
     .attr('fill', STATE_COLORS.default)
     .attr('stroke', '#5a4630')
     .attr('stroke-width', '0.6')
-    .style('cursor', 'pointer')
+    .style('cursor', 'pointer');
+
+  // ── Dot markers for small island nations ──────────────────────────────────
+  Object.entries(SMALL_COUNTRIES).forEach(([iso, {lat, lon}]) => {
+    if (!COUNTRIES_ISO_SET.has(iso)) return;
+    const pos = _projection([lon, lat]); if (!pos) return;
+    const [cx, cy] = pos;
+    const pn = _g.select(`path[data-iso="${iso}"]`).node();
+    if (pn) { try { const b = pn.getBBox(); if (b.width>8&&b.height>8) return; } catch(e){} }
+    _g.append('circle').attr('class','dot-country').attr('data-iso',iso)
+      .attr('cx',cx).attr('cy',cy).attr('r',DOT_R)
+      .attr('fill',STATE_COLORS.default).attr('stroke','#5a4630')
+      .attr('stroke-width','0.8').style('cursor','pointer');
+  });
 
   // ── All map interactions: Touch Events (iOS-safe) + Mouse (desktop) ──────
   // D3 zoom manages the transform STATE and programmatic animations only.
@@ -756,8 +778,10 @@ function initMap(topology) {
     .scaleExtent([1, 14])
     .on('zoom', event => {
       _g.attr('transform', event.transform);
-      _g.selectAll('path[data-iso]')
-        .attr('stroke-width', (0.6 / event.transform.k).toFixed(3));
+      const k = event.transform.k;
+      _g.selectAll('path[data-iso]').attr('stroke-width', (0.6/k).toFixed(3));
+      _g.selectAll('circle.dot-country')
+        .attr('r',(DOT_R/k).toFixed(2)).attr('stroke-width',(0.8/k).toFixed(3));
     });
   _svg.call(_zoom.transform, d3.zoomIdentity); // init state only, no D3 event listeners
 
@@ -881,14 +905,16 @@ function renderMap() {
   const countryStates = getCountryStates();
 
   // Update fill colors for all country paths
-  _g.selectAll('path[data-iso]')
+  _g.selectAll('[data-iso]')
     .attr('fill', function() {
       return STATE_COLORS[countryStates[this.getAttribute('data-iso')] || 'default'];
     });
 
   // Show/hide country-name label (appears when zoomed on wrong-answer reveal)
-  const shouldZoom = state.phase === 'reveal' && state.reveal
-    && !state.reveal.correct && state.target;
+  const shouldZoom = (state.phase === 'reveal' && state.reveal
+    && !state.reveal.correct && state.target)
+    || (state.phase === 'asking' && state.mode === 'find'
+        && state.target && SMALL_COUNTRIES[state.target]);
   const labelSel = _svg.select('.map-label');
   if (!labelSel.empty()) {
     if (shouldZoom) {
@@ -910,6 +936,18 @@ function renderMap() {
 
 function zoomToCountry(iso) {
   if (!_zoom || !_svg) return;
+  // Small island nations: fixed scale centred on centroid
+  if (SMALL_COUNTRIES[iso] && _projection) {
+    try {
+      const [cx, cy] = _projection([SMALL_COUNTRIES[iso].lon, SMALL_COUNTRIES[iso].lat]);
+      const sc = 7;
+      _svg.transition().duration(ZOOM_DURATION_MS).ease(d3.easeCubicInOut)
+        .call(_zoom.transform, d3.zoomIdentity
+          .translate(_mapW/2 - sc*cx, _mapH/2 - sc*cy).scale(sc));
+      return;
+    } catch(e) {}
+  }
+  // Larger countries: adaptive zoom from bounding box
   const node = _g.select(`path[data-iso="${iso}"]`).node();
   if (!node) return;
   try {
