@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>GeoRush 3D — City Pinpointing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
+<style>
+  :root {
+    --bg: #f2e5cb;
+    --bg-2: #ebd9b6;
+    --surface: #faf2dd;
+    --ink: #2a1d12;
+    --ink-2: #5a4630;
+    --ink-soft: #8a7355;
+    --line: #5a4630;
+    --line-soft: #c2a978;
+    --accent: #b04a32;
+    --gold: #d49a17;
+    --moss: #6a8c44;
+    --rust: #b04a32;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse at top left, #f4e7cc 0%, transparent 60%),
+      radial-gradient(ellipse at bottom right, #ecd9b0 0%, transparent 55%),
+      var(--bg);
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  .gr-root { max-width: 640px; margin: 0 auto; padding: 18px 16px 28px; }
+
+  /* Header */
+  .gr-header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 12px; padding-bottom: 14px; border-bottom: 1.5px solid var(--line); margin-bottom: 12px;
+  }
+  .gr-title {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 900;
+    font-size: clamp(26px, 7vw, 38px); line-height: 1; letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 144; margin: 0;
+  }
+  .gr-subtitle {
+    font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500;
+    color: var(--ink-soft); font-size: 12px; margin-top: 5px;
+  }
+  .gr-header-actions { display: flex; gap: 8px; align-items: center; }
+  .gr-select {
+    font-family: 'Manrope', sans-serif; font-weight: 600; font-size: 13px;
+    color: var(--ink); background: var(--surface); border: 1.5px solid var(--line);
+    padding: 8px 10px; border-radius: 0; cursor: pointer; -webkit-appearance: none; appearance: none;
+  }
+  .gr-icon-btn {
+    font-size: 18px; line-height: 1; background: var(--surface); border: 1.5px solid var(--line);
+    padding: 7px 10px; cursor: pointer; color: var(--ink);
+  }
+  .gr-icon-btn:active { background: var(--bg-2); }
+
+  /* Stats bar */
+  .gr-statsbar {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    font-size: 13px; font-weight: 600; color: var(--ink-2);
+    font-variant-numeric: tabular-nums; margin-bottom: 12px;
+  }
+  .gr-dot { color: var(--line-soft); }
+  .gr-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-weight: 700; padding: 2px 8px; border: 1.4px solid var(--line); background: var(--surface);
+  }
+
+  /* Map */
+  .gr-map-card {
+    background: var(--surface); border: 1.5px solid var(--line);
+    position: relative; aspect-ratio: 1.7 / 1; min-height: 300px; overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .gr-map { width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .gr-map-hint {
+    position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
+    font-size: 12px; font-weight: 600; color: var(--ink-2); pointer-events: none;
+    text-shadow: 0 1px 2px rgba(250,242,221,0.95), 0 0 6px rgba(250,242,221,0.9);
+    transition: opacity 0.3s;
+  }
+  .gr-map-status {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-weight: 700; font-size: 16px; color: var(--ink-2);
+    background: var(--surface); text-align: center; padding: 16px;
+  }
+
+  /* Prompt / result card */
+  .gr-card {
+    background: var(--surface); border: 1.5px solid var(--line); padding: 16px 18px;
+  }
+  .gr-prompt { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 16px; }
+  .gr-find { font-size: 13px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.08em; }
+  .gr-city {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 900; font-size: clamp(22px, 6vw, 30px);
+    letter-spacing: 0.01em; color: var(--ink); text-transform: uppercase;
+  }
+  .gr-flag { font-size: 24px; line-height: 1; }
+  .gr-country { font-size: 14px; color: var(--ink-soft); font-weight: 600; }
+
+  .gr-result-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .gr-result-emoji { font-size: 26px; }
+  .gr-result-dist {
+    font-family: 'Fraunces', Georgia, serif; font-weight: 900; font-size: clamp(22px, 6vw, 30px); color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .gr-result-verdict { font-family: 'Fraunces', serif; font-style: italic; font-weight: 500; color: var(--ink-soft); font-size: 15px; }
+  .gr-result-score { font-size: 14px; font-weight: 700; color: var(--ink-2); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  .gr-btn {
+    margin-top: 12px; width: 100%; font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px;
+    color: var(--surface); background: var(--accent); border: 1.5px solid var(--line);
+    padding: 13px 18px; cursor: pointer; letter-spacing: 0.03em;
+  }
+  .gr-btn:active { background: #97402c; }
+  .gr-btn.secondary { color: var(--ink); background: var(--surface); }
+  .gr-btn.secondary:active { background: var(--bg-2); }
+
+  /* Provisional-guess confirm bar (maptap-style) */
+  .gr-confirm { display: flex; gap: 10px; }
+  .gr-confirm .gr-btn { flex: 1; }
+  .gr-confirm .gr-btn.secondary { flex: 0 0 34%; }
+
+  /* Toast */
+  .gr-toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: var(--ink); color: var(--surface); font-weight: 700; font-size: 14px;
+    padding: 11px 18px; border: 1.5px solid var(--line); z-index: 60;
+    box-shadow: 0 6px 20px rgba(42,29,18,0.3); white-space: nowrap;
+  }
+
+  /* Overlay / modal */
+  .gr-overlay {
+    position: fixed; inset: 0; background: rgba(42,29,18,0.55); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 18px;
+  }
+  .gr-modal {
+    background: var(--surface); border: 1.5px solid var(--line); padding: 22px 20px;
+    max-width: 460px; width: 100%; max-height: 88vh; overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(42,29,18,0.4);
+  }
+  .gr-modal h2 {
+    font-family: 'Fraunces', serif; font-weight: 900; font-size: 22px; margin: 0 0 4px;
+  }
+  .gr-modal p.sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 16px; }
+  .gr-field { margin-bottom: 14px; }
+  .gr-field label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); margin-bottom: 5px; }
+  .gr-input, .gr-modal select {
+    width: 100%; font-family: 'Manrope', sans-serif; font-size: 15px; color: var(--ink);
+    background: var(--bg); border: 1.5px solid var(--line); padding: 11px 12px; -webkit-appearance: none; appearance: none;
+  }
+  .gr-rounds { display: flex; gap: 8px; }
+  .gr-round-opt {
+    flex: 1; font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px; cursor: pointer;
+    background: var(--bg); border: 1.5px solid var(--line); padding: 11px 0; text-align: center; color: var(--ink);
+  }
+  .gr-round-opt.active { background: var(--accent); color: var(--surface); }
+
+  .gr-summary-row { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 7px 0; }
+  .gr-summary-row b { font-family: 'Fraunces', serif; }
+  .gr-divider { border: none; border-top: 1.5px solid var(--line-soft); margin: 14px 0; }
+
+  .gr-lb { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .gr-lb td { padding: 8px 4px; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
+  .gr-lb td.rank { width: 30px; font-size: 18px; }
+  .gr-lb td.name { font-weight: 700; }
+  .gr-lb td.num { text-align: right; color: var(--ink-2); }
+  .gr-lb tr.me td { background: rgba(212,154,23,0.18); }
+
+  .gr-link-box {
+    display: flex; gap: 8px; align-items: center; background: var(--bg); border: 1.5px solid var(--line); padding: 10px 12px; margin: 6px 0 12px;
+  }
+  .gr-link-box code { font-size: 13px; word-break: break-all; flex: 1; }
+  .gr-err { color: var(--wrong, #8b1a1a); font-weight: 700; font-size: 14px; margin: 8px 0; }
+  .gr-muted { color: var(--ink-soft); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="gr-root">
+  <header class="gr-header">
+    <div>
+      <h1 class="gr-title">🌍 GeoRush 3D</h1>
+      <div class="gr-subtitle">city pinpointing practice</div>
+    </div>
+    <div class="gr-header-actions">
+      <select id="regionFilter" class="gr-select" aria-label="Region filter">
+        <option value="All">All regions</option>
+        <option value="Africa">Africa</option>
+        <option value="Europe">Europe</option>
+        <option value="Americas">Americas</option>
+        <option value="Asia">Asia</option>
+        <option value="Oceania">Oceania</option>
+      </select>
+      <button id="settingsBtn" class="gr-icon-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <div class="gr-statsbar" id="statsBar">
+    <span id="roundLabel">Round 1</span>
+    <span class="gr-dot">•</span>
+    <span id="diffBadge" class="gr-badge">🟢 Easy</span>
+    <span class="gr-dot">•</span>
+    <span id="avgLabel">Avg: — km</span>
+  </div>
+
+  <div class="gr-map-card">
+    <div id="map" class="gr-map"></div>
+    <div id="mapHint" class="gr-map-hint">tap anywhere to place your guess</div>
+    <div id="mapStatus" class="gr-map-status">Loading globe…</div>
+  </div>
+
+  <div class="gr-card">
+    <div id="promptView" class="gr-prompt">
+      <span class="gr-find">🔍 Find:</span>
+      <span id="promptCity" class="gr-city">—</span>
+      <span id="promptFlag" class="gr-flag"></span>
+      <span id="promptCountry" class="gr-country"></span>
+    </div>
+    <div id="confirmBar" class="gr-confirm" hidden>
+      <button id="clearBtn" class="gr-btn secondary">CLEAR</button>
+      <button id="confirmBtn" class="gr-btn">CONFIRM GUESS →</button>
+    </div>
+    <div id="resultView" hidden>
+      <div class="gr-result-head">
+        <span id="resultEmoji" class="gr-result-emoji"></span>
+        <span id="resultDist" class="gr-result-dist"></span>
+        <span id="resultVerdict" class="gr-result-verdict"></span>
+      </div>
+      <div id="resultScore" class="gr-result-score"></div>
+      <button id="nextBtn" class="gr-btn">NEXT CITY →</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="gr-toast" hidden></div>
+<div id="overlay" class="gr-overlay" hidden><div class="gr-modal" id="modalBody"></div></div>
+
+<script>
+'use strict';
+
+// ── Scoring & distance (per spec) ───────────────────────────────────────────
+const MAX_DIST_KM = 10000;
+function calcScore(distanceKm) {
+  return Math.round(1000 * Math.max(0, 1 - distanceKm / MAX_DIST_KM));
+}
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function fmtKm(km) {
+  return km >= 1000 ? Math.round(km).toLocaleString('en-US') : Math.round(km).toString();
+}
+function verdict(km) {
+  if (km < 200)  return { emoji: '🎯', text: 'Incredible!' };
+  if (km < 800)  return { emoji: '✅', text: 'Close!' };
+  if (km < 2500) return { emoji: '📍', text: 'Not bad' };
+  return { emoji: '❌', text: 'Way off' };
+}
+
+// ── City database ───────────────────────────────────────────────────────────
+// Built via a tiny factory to keep the inline array compact and typo-resistant.
+// Shape: { name, country, flag, lat, lon, difficulty, region }
+function C(name, country, flag, lat, lon, difficulty, region) {
+  return { name, country, flag, lat, lon, difficulty, region };
+}
+const CITIES = [
+  // ── AFRICA — easy ──
+  C('Cairo','Egypt','🇪🇬',30.044,31.236,'easy','Africa'),
+  C('Lagos','Nigeria','🇳🇬',6.524,3.379,'easy','Africa'),
+  C('Nairobi','Kenya','🇰🇪',-1.286,36.817,'easy','Africa'),
+  C('Cape Town','South Africa','🇿🇦',-33.925,18.424,'easy','Africa'),
+  C('Johannesburg','South Africa','🇿🇦',-26.205,28.050,'easy','Africa'),
+  C('Casablanca','Morocco','🇲🇦',33.573,-7.590,'easy','Africa'),
+  C('Accra','Ghana','🇬🇭',5.604,-0.187,'easy','Africa'),
+  C('Addis Ababa','Ethiopia','🇪🇹',9.030,38.740,'easy','Africa'),
+  C('Dakar','Senegal','🇸🇳',14.716,-17.467,'easy','Africa'),
+  C('Algiers','Algeria','🇩🇿',36.754,3.060,'easy','Africa'),
+  C('Tunis','Tunisia','🇹🇳',36.807,10.181,'easy','Africa'),
+  C('Khartoum','Sudan','🇸🇩',15.500,32.560,'easy','Africa'),
+  C('Kampala','Uganda','🇺🇬',0.347,32.582,'easy','Africa'),
+  C('Luanda','Angola','🇦🇴',-8.839,13.289,'easy','Africa'),
+  C('Abidjan','Ivory Coast','🇨🇮',5.345,-4.014,'easy','Africa'),
+  C('Marrakesh','Morocco','🇲🇦',31.630,-7.981,'easy','Africa'),
+  C('Mombasa','Kenya','🇰🇪',-4.043,39.668,'easy','Africa'),
+  C('Durban','South Africa','🇿🇦',-29.859,31.022,'easy','Africa'),
+  C('Pretoria','South Africa','🇿🇦',-25.745,28.188,'easy','Africa'),
+  C('Rabat','Morocco','🇲🇦',34.020,-6.841,'easy','Africa'),
+  C('Tripoli','Libya','🇱🇾',32.887,13.191,'easy','Africa'),
+  C('Dar es Salaam','Tanzania','🇹🇿',-6.792,39.208,'easy','Africa'),
+  C('Kinshasa','DR Congo','🇨🇩',-4.325,15.322,'easy','Africa'),
+  C('Harare','Zimbabwe','🇿🇼',-17.825,31.033,'easy','Africa'),
+  // ── AFRICA — medium ──
+  C('Lusaka','Zambia','🇿🇲',-15.387,28.323,'medium','Africa'),
+  C('Maputo','Mozambique','🇲🇿',-25.969,32.573,'medium','Africa'),
+  C('Windhoek','Namibia','🇳🇦',-22.560,17.065,'medium','Africa'),
+  C('Gaborone','Botswana','🇧🇼',-24.628,25.923,'medium','Africa'),
+  C('Bamako','Mali','🇲🇱',12.639,-8.003,'medium','Africa'),
+  C('Conakry','Guinea','🇬🇳',9.641,-13.578,'medium','Africa'),
+  C('Kigali','Rwanda','🇷🇼',-1.944,30.062,'medium','Africa'),
+  C('Lilongwe','Malawi','🇲🇼',-13.963,33.787,'medium','Africa'),
+  C('Antananarivo','Madagascar','🇲🇬',-18.879,47.508,'medium','Africa'),
+  C('Yaoundé','Cameroon','🇨🇲',3.848,11.502,'medium','Africa'),
+  C('Douala','Cameroon','🇨🇲',4.051,9.768,'medium','Africa'),
+  C('Ouagadougou','Burkina Faso','🇧🇫',12.371,-1.520,'medium','Africa'),
+  C('Niamey','Niger','🇳🇪',13.512,2.112,'medium','Africa'),
+  C('Lomé','Togo','🇹🇬',6.137,1.213,'medium','Africa'),
+  C('Cotonou','Benin','🇧🇯',6.370,2.391,'medium','Africa'),
+  C('Freetown','Sierra Leone','🇸🇱',8.465,-13.232,'medium','Africa'),
+  C('Monrovia','Liberia','🇱🇷',6.301,-10.797,'medium','Africa'),
+  C('Nouakchott','Mauritania','🇲🇷',18.079,-15.965,'medium','Africa'),
+  C('Banjul','Gambia','🇬🇲',13.454,-16.579,'medium','Africa'),
+  C('Bujumbura','Burundi','🇧🇮',-3.383,29.360,'medium','Africa'),
+  C('Brazzaville','Congo','🇨🇬',-4.263,15.243,'medium','Africa'),
+  C('Libreville','Gabon','🇬🇦',0.416,9.467,'medium','Africa'),
+  C('Asmara','Eritrea','🇪🇷',15.339,38.932,'medium','Africa'),
+  C('Mogadishu','Somalia','🇸🇴',2.047,45.318,'medium','Africa'),
+  // ── AFRICA — hard ──
+  C('Port Louis','Mauritius','🇲🇺',-20.161,57.498,'hard','Africa'),
+  C('Victoria','Seychelles','🇸🇨',-4.620,55.451,'hard','Africa'),
+  C('Praia','Cape Verde','🇨🇻',14.933,-23.513,'hard','Africa'),
+  C('Moroni','Comoros','🇰🇲',-11.700,43.256,'hard','Africa'),
+  C('São Tomé','São Tomé & Príncipe','🇸🇹',0.336,6.731,'hard','Africa'),
+  C('Malabo','Equatorial Guinea','🇬🇶',3.750,8.737,'hard','Africa'),
+  C('Bangui','Central African Rep.','🇨🇫',4.394,18.558,'hard','Africa'),
+  C("N'Djamena",'Chad','🇹🇩',12.135,15.055,'hard','Africa'),
+  C('Juba','South Sudan','🇸🇸',4.859,31.571,'hard','Africa'),
+  C('Maseru','Lesotho','🇱🇸',-29.310,27.480,'hard','Africa'),
+  C('Mbabane','Eswatini','🇸🇿',-26.305,31.137,'hard','Africa'),
+  C('Bissau','Guinea-Bissau','🇬🇼',11.864,-15.598,'hard','Africa'),
+  C('Djibouti','Djibouti','🇩🇯',11.589,43.145,'hard','Africa'),
+  C('Blantyre','Malawi','🇲🇼',-15.787,35.006,'hard','Africa'),
+  C('Kisumu','Kenya','🇰🇪',-0.092,34.768,'hard','Africa'),
+  C('Oran','Algeria','🇩🇿',35.699,-0.634,'hard','Africa'),
+  C('Fez','Morocco','🇲🇦',34.034,-5.000,'hard','Africa'),
+  C('Benghazi','Libya','🇱🇾',32.119,20.069,'hard','Africa'),
+  C('Kano','Nigeria','🇳🇬',12.002,8.592,'hard','Africa'),
+  C('Bulawayo','Zimbabwe','🇿🇼',-20.150,28.583,'hard','Africa'),
+  C('Beira','Mozambique','🇲🇿',-19.844,34.839,'hard','Africa'),
+  C('Tamale','Ghana','🇬🇭',9.408,-0.853,'hard','Africa'),
+
+  // ── EUROPE — easy ──
+  C('London','United Kingdom','🇬🇧',51.507,-0.128,'easy','Europe'),
+  C('Paris','France','🇫🇷',48.857,2.352,'easy','Europe'),
+  C('Berlin','Germany','🇩🇪',52.520,13.405,'easy','Europe'),
+  C('Madrid','Spain','🇪🇸',40.417,-3.704,'easy','Europe'),
+  C('Rome','Italy','🇮🇹',41.903,12.496,'easy','Europe'),
+  C('Amsterdam','Netherlands','🇳🇱',52.368,4.904,'easy','Europe'),
+  C('Vienna','Austria','🇦🇹',48.208,16.374,'easy','Europe'),
+  C('Lisbon','Portugal','🇵🇹',38.722,-9.139,'easy','Europe'),
+  C('Brussels','Belgium','🇧🇪',50.851,4.352,'easy','Europe'),
+  C('Dublin','Ireland','🇮🇪',53.350,-6.260,'easy','Europe'),
+  C('Stockholm','Sweden','🇸🇪',59.329,18.069,'easy','Europe'),
+  C('Oslo','Norway','🇳🇴',59.914,10.752,'easy','Europe'),
+  C('Copenhagen','Denmark','🇩🇰',55.676,12.568,'easy','Europe'),
+  C('Helsinki','Finland','🇫🇮',60.170,24.938,'easy','Europe'),
+  C('Athens','Greece','🇬🇷',37.984,23.728,'easy','Europe'),
+  C('Warsaw','Poland','🇵🇱',52.230,21.012,'easy','Europe'),
+  C('Prague','Czechia','🇨🇿',50.076,14.438,'easy','Europe'),
+  C('Budapest','Hungary','🇭🇺',47.498,19.040,'easy','Europe'),
+  C('Moscow','Russia','🇷🇺',55.756,37.617,'easy','Europe'),
+  C('Munich','Germany','🇩🇪',48.135,11.582,'easy','Europe'),
+  C('Barcelona','Spain','🇪🇸',41.385,2.173,'easy','Europe'),
+  C('Milan','Italy','🇮🇹',45.464,9.190,'easy','Europe'),
+  C('Zurich','Switzerland','🇨🇭',47.377,8.541,'easy','Europe'),
+  C('Istanbul','Turkey','🇹🇷',41.008,28.978,'easy','Europe'),
+  // ── EUROPE — medium ──
+  C('Bucharest','Romania','🇷🇴',44.427,26.103,'medium','Europe'),
+  C('Sofia','Bulgaria','🇧🇬',42.698,23.319,'medium','Europe'),
+  C('Belgrade','Serbia','🇷🇸',44.787,20.449,'medium','Europe'),
+  C('Zagreb','Croatia','🇭🇷',45.815,15.982,'medium','Europe'),
+  C('Bratislava','Slovakia','🇸🇰',48.146,17.107,'medium','Europe'),
+  C('Ljubljana','Slovenia','🇸🇮',46.056,14.506,'medium','Europe'),
+  C('Kyiv','Ukraine','🇺🇦',50.450,30.524,'medium','Europe'),
+  C('Minsk','Belarus','🇧🇾',53.901,27.561,'medium','Europe'),
+  C('Vilnius','Lithuania','🇱🇹',54.687,25.280,'medium','Europe'),
+  C('Riga','Latvia','🇱🇻',56.950,24.106,'medium','Europe'),
+  C('Tallinn','Estonia','🇪🇪',59.437,24.754,'medium','Europe'),
+  C('Reykjavik','Iceland','🇮🇸',64.147,-21.943,'medium','Europe'),
+  C('Geneva','Switzerland','🇨🇭',46.204,6.143,'medium','Europe'),
+  C('Hamburg','Germany','🇩🇪',53.551,9.994,'medium','Europe'),
+  C('Naples','Italy','🇮🇹',40.852,14.268,'medium','Europe'),
+  C('Marseille','France','🇫🇷',43.296,5.370,'medium','Europe'),
+  C('Lyon','France','🇫🇷',45.764,4.835,'medium','Europe'),
+  C('Porto','Portugal','🇵🇹',41.158,-8.629,'medium','Europe'),
+  C('Seville','Spain','🇪🇸',37.389,-5.984,'medium','Europe'),
+  C('Valencia','Spain','🇪🇸',39.470,-0.376,'medium','Europe'),
+  C('Kraków','Poland','🇵🇱',50.065,19.945,'medium','Europe'),
+  C('Gothenburg','Sweden','🇸🇪',57.709,11.974,'medium','Europe'),
+  C('Rotterdam','Netherlands','🇳🇱',51.924,4.478,'medium','Europe'),
+  C('Thessaloniki','Greece','🇬🇷',40.640,22.944,'medium','Europe'),
+  // ── EUROPE — hard ──
+  C('Sarajevo','Bosnia & Herz.','🇧🇦',43.857,18.413,'hard','Europe'),
+  C('Skopje','North Macedonia','🇲🇰',41.998,21.426,'hard','Europe'),
+  C('Tirana','Albania','🇦🇱',41.327,19.819,'hard','Europe'),
+  C('Podgorica','Montenegro','🇲🇪',42.443,19.262,'hard','Europe'),
+  C('Chișinău','Moldova','🇲🇩',47.011,28.864,'hard','Europe'),
+  C('Luxembourg','Luxembourg','🇱🇺',49.611,6.131,'hard','Europe'),
+  C('Andorra la Vella','Andorra','🇦🇩',42.506,1.522,'hard','Europe'),
+  C('Valletta','Malta','🇲🇹',35.899,14.514,'hard','Europe'),
+  C('San Marino','San Marino','🇸🇲',43.936,12.447,'hard','Europe'),
+  C('Monaco','Monaco','🇲🇨',43.738,7.424,'hard','Europe'),
+  C('Vaduz','Liechtenstein','🇱🇮',47.141,9.521,'hard','Europe'),
+  C('Bern','Switzerland','🇨🇭',46.948,7.447,'hard','Europe'),
+  C('Bilbao','Spain','🇪🇸',43.263,-2.935,'hard','Europe'),
+  C('Bologna','Italy','🇮🇹',44.494,11.343,'hard','Europe'),
+  C('Turin','Italy','🇮🇹',45.070,7.687,'hard','Europe'),
+  C('Bordeaux','France','🇫🇷',44.838,-0.578,'hard','Europe'),
+  C('Nice','France','🇫🇷',43.710,7.262,'hard','Europe'),
+  C('Bremen','Germany','🇩🇪',53.079,8.802,'hard','Europe'),
+  C('Cork','Ireland','🇮🇪',51.898,-8.475,'hard','Europe'),
+  C('Bergen','Norway','🇳🇴',60.392,5.325,'hard','Europe'),
+  C('Aarhus','Denmark','🇩🇰',56.163,10.204,'hard','Europe'),
+  C('Gdańsk','Poland','🇵🇱',54.352,18.647,'hard','Europe'),
+
+  // ── AMERICAS — easy ──
+  C('New York','United States','🇺🇸',40.713,-74.006,'easy','Americas'),
+  C('Los Angeles','United States','🇺🇸',34.052,-118.244,'easy','Americas'),
+  C('Chicago','United States','🇺🇸',41.878,-87.630,'easy','Americas'),
+  C('Toronto','Canada','🇨🇦',43.653,-79.383,'easy','Americas'),
+  C('Mexico City','Mexico','🇲🇽',19.433,-99.133,'easy','Americas'),
+  C('São Paulo','Brazil','🇧🇷',-23.551,-46.633,'easy','Americas'),
+  C('Rio de Janeiro','Brazil','🇧🇷',-22.907,-43.173,'easy','Americas'),
+  C('Buenos Aires','Argentina','🇦🇷',-34.604,-58.382,'easy','Americas'),
+  C('Lima','Peru','🇵🇪',-12.046,-77.043,'easy','Americas'),
+  C('Bogotá','Colombia','🇨🇴',4.711,-74.072,'easy','Americas'),
+  C('Santiago','Chile','🇨🇱',-33.449,-70.669,'easy','Americas'),
+  C('Vancouver','Canada','🇨🇦',49.283,-123.121,'easy','Americas'),
+  C('Montreal','Canada','🇨🇦',45.502,-73.567,'easy','Americas'),
+  C('Miami','United States','🇺🇸',25.762,-80.192,'easy','Americas'),
+  C('Houston','United States','🇺🇸',29.760,-95.370,'easy','Americas'),
+  C('San Francisco','United States','🇺🇸',37.775,-122.419,'easy','Americas'),
+  C('Washington','United States','🇺🇸',38.907,-77.037,'easy','Americas'),
+  C('Caracas','Venezuela','🇻🇪',10.481,-66.904,'easy','Americas'),
+  C('Havana','Cuba','🇨🇺',23.114,-82.366,'easy','Americas'),
+  C('Montevideo','Uruguay','🇺🇾',-34.901,-56.165,'easy','Americas'),
+  C('Quito','Ecuador','🇪🇨',-0.181,-78.467,'easy','Americas'),
+  C('Guadalajara','Mexico','🇲🇽',20.660,-103.350,'easy','Americas'),
+  C('Boston','United States','🇺🇸',42.360,-71.058,'easy','Americas'),
+  C('Seattle','United States','🇺🇸',47.606,-122.332,'easy','Americas'),
+  // ── AMERICAS — medium ──
+  C('Brasília','Brazil','🇧🇷',-15.794,-47.882,'medium','Americas'),
+  C('Medellín','Colombia','🇨🇴',6.244,-75.581,'medium','Americas'),
+  C('Cali','Colombia','🇨🇴',3.452,-76.532,'medium','Americas'),
+  C('Guayaquil','Ecuador','🇪🇨',-2.190,-79.886,'medium','Americas'),
+  C('La Paz','Bolivia','🇧🇴',-16.500,-68.150,'medium','Americas'),
+  C('Asunción','Paraguay','🇵🇾',-25.264,-57.576,'medium','Americas'),
+  C('San José','Costa Rica','🇨🇷',9.928,-84.091,'medium','Americas'),
+  C('Panama City','Panama','🇵🇦',8.984,-79.518,'medium','Americas'),
+  C('Managua','Nicaragua','🇳🇮',12.115,-86.236,'medium','Americas'),
+  C('Tegucigalpa','Honduras','🇭🇳',14.072,-87.192,'medium','Americas'),
+  C('San Salvador','El Salvador','🇸🇻',13.692,-89.218,'medium','Americas'),
+  C('Guatemala City','Guatemala','🇬🇹',14.634,-90.507,'medium','Americas'),
+  C('Santo Domingo','Dominican Rep.','🇩🇴',18.486,-69.931,'medium','Americas'),
+  C('Kingston','Jamaica','🇯🇲',17.971,-76.793,'medium','Americas'),
+  C('Port-au-Prince','Haiti','🇭🇹',18.594,-72.307,'medium','Americas'),
+  C('Monterrey','Mexico','🇲🇽',25.687,-100.316,'medium','Americas'),
+  C('Tijuana','Mexico','🇲🇽',32.515,-117.038,'medium','Americas'),
+  C('Cancún','Mexico','🇲🇽',21.161,-86.851,'medium','Americas'),
+  C('Calgary','Canada','🇨🇦',51.045,-114.072,'medium','Americas'),
+  C('Ottawa','Canada','🇨🇦',45.421,-75.697,'medium','Americas'),
+  C('Dallas','United States','🇺🇸',32.777,-96.797,'medium','Americas'),
+  C('Denver','United States','🇺🇸',39.739,-104.990,'medium','Americas'),
+  C('Atlanta','United States','🇺🇸',33.749,-84.388,'medium','Americas'),
+  C('Philadelphia','United States','🇺🇸',39.953,-75.165,'medium','Americas'),
+  // ── AMERICAS — hard ──
+  C('Paramaribo','Suriname','🇸🇷',5.852,-55.204,'hard','Americas'),
+  C('Georgetown','Guyana','🇬🇾',6.801,-58.155,'hard','Americas'),
+  C('Cayenne','French Guiana','🇬🇫',4.933,-52.330,'hard','Americas'),
+  C('Sucre','Bolivia','🇧🇴',-19.034,-65.262,'hard','Americas'),
+  C('Belmopan','Belize','🇧🇿',17.251,-88.760,'hard','Americas'),
+  C('San Pedro Sula','Honduras','🇭🇳',15.504,-88.025,'hard','Americas'),
+  C('Maracaibo','Venezuela','🇻🇪',10.654,-71.640,'hard','Americas'),
+  C('Valparaíso','Chile','🇨🇱',-33.046,-71.620,'hard','Americas'),
+  C('Rosario','Argentina','🇦🇷',-32.946,-60.639,'hard','Americas'),
+  C('Córdoba','Argentina','🇦🇷',-31.420,-64.188,'hard','Americas'),
+  C('Curitiba','Brazil','🇧🇷',-25.428,-49.273,'hard','Americas'),
+  C('Recife','Brazil','🇧🇷',-8.047,-34.877,'hard','Americas'),
+  C('Salvador','Brazil','🇧🇷',-12.971,-38.501,'hard','Americas'),
+  C('Manaus','Brazil','🇧🇷',-3.119,-60.022,'hard','Americas'),
+  C('Cartagena','Colombia','🇨🇴',10.391,-75.479,'hard','Americas'),
+  C('Arequipa','Peru','🇵🇪',-16.409,-71.537,'hard','Americas'),
+  C('Cusco','Peru','🇵🇪',-13.532,-71.967,'hard','Americas'),
+  C('Mendoza','Argentina','🇦🇷',-32.890,-68.844,'hard','Americas'),
+  C('Bridgetown','Barbados','🇧🇧',13.114,-59.599,'hard','Americas'),
+  C('Nassau','Bahamas','🇧🇸',25.060,-77.345,'hard','Americas'),
+  C('Willemstad','Curaçao','🇨🇼',12.117,-68.933,'hard','Americas'),
+  C('Halifax','Canada','🇨🇦',44.649,-63.576,'hard','Americas'),
+
+  // ── ASIA — easy ──
+  C('Tokyo','Japan','🇯🇵',35.690,139.692,'easy','Asia'),
+  C('Beijing','China','🇨🇳',39.904,116.407,'easy','Asia'),
+  C('Shanghai','China','🇨🇳',31.230,121.474,'easy','Asia'),
+  C('Delhi','India','🇮🇳',28.704,77.102,'easy','Asia'),
+  C('Mumbai','India','🇮🇳',19.076,72.878,'easy','Asia'),
+  C('Seoul','South Korea','🇰🇷',37.567,126.978,'easy','Asia'),
+  C('Bangkok','Thailand','🇹🇭',13.756,100.502,'easy','Asia'),
+  C('Singapore','Singapore','🇸🇬',1.352,103.820,'easy','Asia'),
+  C('Hong Kong','Hong Kong','🇭🇰',22.319,114.169,'easy','Asia'),
+  C('Jakarta','Indonesia','🇮🇩',-6.208,106.846,'easy','Asia'),
+  C('Dubai','UAE','🇦🇪',25.205,55.271,'easy','Asia'),
+  C('Tehran','Iran','🇮🇷',35.689,51.389,'easy','Asia'),
+  C('Baghdad','Iraq','🇮🇶',33.315,44.366,'easy','Asia'),
+  C('Manila','Philippines','🇵🇭',14.599,120.984,'easy','Asia'),
+  C('Kuala Lumpur','Malaysia','🇲🇾',3.139,101.687,'easy','Asia'),
+  C('Ho Chi Minh City','Vietnam','🇻🇳',10.823,106.630,'easy','Asia'),
+  C('Hanoi','Vietnam','🇻🇳',21.028,105.804,'easy','Asia'),
+  C('Karachi','Pakistan','🇵🇰',24.861,67.010,'easy','Asia'),
+  C('Dhaka','Bangladesh','🇧🇩',23.811,90.413,'easy','Asia'),
+  C('Osaka','Japan','🇯🇵',34.694,135.502,'easy','Asia'),
+  C('Guangzhou','China','🇨🇳',23.129,113.264,'easy','Asia'),
+  C('Taipei','Taiwan','🇹🇼',25.033,121.565,'easy','Asia'),
+  C('Riyadh','Saudi Arabia','🇸🇦',24.713,46.675,'easy','Asia'),
+  C('Tel Aviv','Israel','🇮🇱',32.085,34.781,'easy','Asia'),
+  // ── ASIA — medium ──
+  C('Chennai','India','🇮🇳',13.083,80.270,'medium','Asia'),
+  C('Bengaluru','India','🇮🇳',12.972,77.595,'medium','Asia'),
+  C('Kolkata','India','🇮🇳',22.573,88.364,'medium','Asia'),
+  C('Hyderabad','India','🇮🇳',17.385,78.487,'medium','Asia'),
+  C('Lahore','Pakistan','🇵🇰',31.520,74.359,'medium','Asia'),
+  C('Islamabad','Pakistan','🇵🇰',33.684,73.048,'medium','Asia'),
+  C('Yangon','Myanmar','🇲🇲',16.866,96.195,'medium','Asia'),
+  C('Phnom Penh','Cambodia','🇰🇭',11.563,104.916,'medium','Asia'),
+  C('Vientiane','Laos','🇱🇦',17.975,102.633,'medium','Asia'),
+  C('Colombo','Sri Lanka','🇱🇰',6.927,79.861,'medium','Asia'),
+  C('Kathmandu','Nepal','🇳🇵',27.717,85.324,'medium','Asia'),
+  C('Doha','Qatar','🇶🇦',25.286,51.534,'medium','Asia'),
+  C('Kuwait City','Kuwait','🇰🇼',29.376,47.978,'medium','Asia'),
+  C('Muscat','Oman','🇴🇲',23.588,58.408,'medium','Asia'),
+  C('Amman','Jordan','🇯🇴',31.956,35.945,'medium','Asia'),
+  C('Beirut','Lebanon','🇱🇧',33.889,35.495,'medium','Asia'),
+  C('Damascus','Syria','🇸🇾',33.513,36.292,'medium','Asia'),
+  C('Tashkent','Uzbekistan','🇺🇿',41.299,69.240,'medium','Asia'),
+  C('Almaty','Kazakhstan','🇰🇿',43.238,76.889,'medium','Asia'),
+  C('Baku','Azerbaijan','🇦🇿',40.409,49.867,'medium','Asia'),
+  C('Tbilisi','Georgia','🇬🇪',41.716,44.787,'medium','Asia'),
+  C('Yerevan','Armenia','🇦🇲',40.179,44.499,'medium','Asia'),
+  C('Ankara','Turkey','🇹🇷',39.933,32.859,'medium','Asia'),
+  C('Jeddah','Saudi Arabia','🇸🇦',21.486,39.192,'medium','Asia'),
+  // ── ASIA — hard ──
+  C('Ulaanbaatar','Mongolia','🇲🇳',47.886,106.906,'hard','Asia'),
+  C('Astana','Kazakhstan','🇰🇿',51.169,71.449,'hard','Asia'),
+  C('Bishkek','Kyrgyzstan','🇰🇬',42.874,74.570,'hard','Asia'),
+  C('Dushanbe','Tajikistan','🇹🇯',38.560,68.787,'hard','Asia'),
+  C('Ashgabat','Turkmenistan','🇹🇲',37.960,58.326,'hard','Asia'),
+  C('Thimphu','Bhutan','🇧🇹',27.472,89.639,'hard','Asia'),
+  C('Malé','Maldives','🇲🇻',4.175,73.509,'hard','Asia'),
+  C('Manama','Bahrain','🇧🇭',26.229,50.586,'hard','Asia'),
+  C('Abu Dhabi','UAE','🇦🇪',24.453,54.377,'hard','Asia'),
+  C("Sanaa",'Yemen','🇾🇪',15.369,44.191,'hard','Asia'),
+  C('Mecca','Saudi Arabia','🇸🇦',21.389,39.857,'hard','Asia'),
+  C('Isfahan','Iran','🇮🇷',32.654,51.668,'hard','Asia'),
+  C('Shiraz','Iran','🇮🇷',29.591,52.584,'hard','Asia'),
+  C('Surabaya','Indonesia','🇮🇩',-7.258,112.752,'hard','Asia'),
+  C('Bandung','Indonesia','🇮🇩',-6.917,107.619,'hard','Asia'),
+  C('Cebu','Philippines','🇵🇭',10.317,123.891,'hard','Asia'),
+  C('Da Nang','Vietnam','🇻🇳',16.054,108.202,'hard','Asia'),
+  C('Chiang Mai','Thailand','🇹🇭',18.787,98.993,'hard','Asia'),
+  C('Pune','India','🇮🇳',18.520,73.857,'hard','Asia'),
+  C('Ahmedabad','India','🇮🇳',23.023,72.571,'hard','Asia'),
+  C('Mandalay','Myanmar','🇲🇲',21.976,96.084,'hard','Asia'),
+  C('Naypyidaw','Myanmar','🇲🇲',19.764,96.078,'hard','Asia'),
+
+  // ── OCEANIA — easy ──
+  C('Sydney','Australia','🇦🇺',-33.868,151.209,'easy','Oceania'),
+  C('Melbourne','Australia','🇦🇺',-37.814,144.963,'easy','Oceania'),
+  C('Brisbane','Australia','🇦🇺',-27.469,153.025,'easy','Oceania'),
+  C('Perth','Australia','🇦🇺',-31.953,115.857,'easy','Oceania'),
+  C('Auckland','New Zealand','🇳🇿',-36.848,174.763,'easy','Oceania'),
+  C('Wellington','New Zealand','🇳🇿',-41.286,174.776,'easy','Oceania'),
+  C('Adelaide','Australia','🇦🇺',-34.929,138.601,'easy','Oceania'),
+  C('Canberra','Australia','🇦🇺',-35.281,149.128,'easy','Oceania'),
+  C('Gold Coast','Australia','🇦🇺',-28.017,153.400,'easy','Oceania'),
+  C('Christchurch','New Zealand','🇳🇿',-43.532,172.636,'easy','Oceania'),
+  C('Hobart','Australia','🇦🇺',-42.883,147.327,'easy','Oceania'),
+  C('Darwin','Australia','🇦🇺',-12.463,130.846,'easy','Oceania'),
+  // ── OCEANIA — medium ──
+  C('Port Moresby','Papua New Guinea','🇵🇬',-9.443,147.180,'medium','Oceania'),
+  C('Suva','Fiji','🇫🇯',-18.124,178.450,'medium','Oceania'),
+  C('Nouméa','New Caledonia','🇳🇨',-22.276,166.458,'medium','Oceania'),
+  C('Papeete','French Polynesia','🇵🇫',-17.535,-149.570,'medium','Oceania'),
+  C('Apia','Samoa','🇼🇸',-13.831,-171.770,'medium','Oceania'),
+  C("Nukualofa",'Tonga','🇹🇴',-21.139,-175.204,'medium','Oceania'),
+  C('Honiara','Solomon Islands','🇸🇧',-9.446,159.943,'medium','Oceania'),
+  C('Port Vila','Vanuatu','🇻🇺',-17.734,168.322,'medium','Oceania'),
+  C('Newcastle','Australia','🇦🇺',-32.927,151.776,'medium','Oceania'),
+  C('Cairns','Australia','🇦🇺',-16.920,145.770,'medium','Oceania'),
+  C('Townsville','Australia','🇦🇺',-19.258,146.818,'medium','Oceania'),
+  C('Dunedin','New Zealand','🇳🇿',-45.879,170.503,'medium','Oceania'),
+  C('Wollongong','Australia','🇦🇺',-34.425,150.893,'medium','Oceania'),
+  C('Hamilton','New Zealand','🇳🇿',-37.787,175.279,'medium','Oceania'),
+  // ── OCEANIA — hard ──
+  C('Funafuti','Tuvalu','🇹🇻',-8.521,179.198,'hard','Oceania'),
+  C('Tarawa','Kiribati','🇰🇮',1.451,172.972,'hard','Oceania'),
+  C('Majuro','Marshall Islands','🇲🇭',7.116,171.185,'hard','Oceania'),
+  C('Palikir','Micronesia','🇫🇲',6.918,158.185,'hard','Oceania'),
+  C('Ngerulmud','Palau','🇵🇼',7.500,134.624,'hard','Oceania'),
+  C('Yaren','Nauru','🇳🇷',-0.547,166.921,'hard','Oceania'),
+  C('Avarua','Cook Islands','🇨🇰',-21.207,-159.771,'hard','Oceania'),
+  C('Alofi','Niue','🇳🇺',-19.056,-169.918,'hard','Oceania'),
+  C('Pago Pago','American Samoa','🇦🇸',-14.276,-170.702,'hard','Oceania'),
+  C('Hagåtña','Guam','🇬🇺',13.470,144.751,'hard','Oceania'),
+  C('Mata-Utu','Wallis & Futuna','🇼🇫',-13.282,-176.176,'hard','Oceania'),
+  C('Nadi','Fiji','🇫🇯',-17.798,177.420,'hard','Oceania'),
+  C('Lae','Papua New Guinea','🇵🇬',-6.730,146.999,'hard','Oceania'),
+  C('Rotorua','New Zealand','🇳🇿',-38.137,176.251,'hard','Oceania'),
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D Globe layer — STUBBED for Task 1. Filled in by later tasks (Globe.gl).
+// These no-ops let the solo game logic run without a real globe yet.
+// ─────────────────────────────────────────────────────────────────────────────
+function initGlobe(){}
+function drawResult(){}
+function clearMarkers(){}
+function dropGuessPin(){}
+function clearGuessPin(){}
+function commitGuess(){}
+function resetView(){}
+function showMapStatus(m){ const s = $('mapStatus'); if (s){ s.textContent = m; s.style.display = 'flex'; } }
+function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Game state machine — SOLO PRACTICE ONLY (no challenge mode)
+// ─────────────────────────────────────────────────────────────────────────────
+let gameState = 'loading';
+
+let difficulty = 'easy';
+let regionFilter = 'All';
+let round = 0;
+let current = null;
+
+// Session accumulators (reset per page load)
+let recentKm = [];          // rolling window for difficulty scaling
+let sessionDistTotal = 0;
+let sessionScoreTotal = 0;
+let sessionBest = { km: Infinity, city: '' };
+
+const STORAGE_KEY = 'georush3d_stats';
+const PLAY_URL = 'https://brondumjacob.github.io/geography-quiz/georush3d.html';
+
+const DIFF_META = {
+  easy:   { badge: '🟢 Easy',   label: 'Easy' },
+  medium: { badge: '🟡 Medium', label: 'Medium' },
+  hard:   { badge: '🔴 Hard',   label: 'Hard' },
+};
+
+// ── localStorage stats ───────────────────────────────────────────────────────
+function loadStats() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (raw && typeof raw === 'object') {
+      return {
+        totalRounds: raw.totalRounds || 0,
+        totalScore: raw.totalScore || 0,
+        totalDistanceKm: raw.totalDistanceKm || 0,
+        bestGuessKm: (raw.bestGuessKm == null) ? Infinity : raw.bestGuessKm,
+        bestGuessCity: raw.bestGuessCity || '',
+        bestSessionAvgKm: (raw.bestSessionAvgKm == null) ? Infinity : raw.bestSessionAvgKm,
+        history: Array.isArray(raw.history) ? raw.history : [],
+      };
+    }
+  } catch {}
+  return { totalRounds: 0, totalScore: 0, totalDistanceKm: 0, bestGuessKm: Infinity,
+           bestGuessCity: '', bestSessionAvgKm: Infinity, history: [] };
+}
+function saveStats(s) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.hidden = true; }, 2000);
+}
+
+// ── Difficulty auto-scaling (Solo) ──────────────────────────────────────────
+function evaluateDifficulty() {
+  if (recentKm.length < 5) return;
+  const window5 = recentKm.slice(-5);
+  const avg = window5.reduce((a, b) => a + b, 0) / window5.length;
+  const prev = difficulty;
+  if (difficulty === 'easy' && avg < 400) difficulty = 'medium';
+  else if (difficulty === 'medium' && avg < 600) difficulty = 'hard';
+  else if (difficulty === 'medium' && avg > 2500) difficulty = 'easy';
+  else if (difficulty === 'hard' && avg > 2000) difficulty = 'medium';
+  if (difficulty !== prev) {
+    const up = (prev === 'easy') || (prev === 'medium' && difficulty === 'hard');
+    showToast(`${up ? '📈' : '📉'} Difficulty → ${DIFF_META[difficulty].label} ${DIFF_META[difficulty].badge.slice(0, 2)}`);
+  }
+}
+
+// ── Stats bar ────────────────────────────────────────────────────────────────
+function updateStatsBar() {
+  $('roundLabel').textContent = `Round ${Math.max(1, round)}`;
+  $('diffBadge').textContent = DIFF_META[difficulty].badge;
+  const avg = round > 0 ? Math.round(sessionDistTotal / round) : null;
+  $('avgLabel').textContent = avg == null ? 'Avg: — km' : `Avg: ${fmtKm(avg)} km`;
+}
+
+// ── Prompt / result views ────────────────────────────────────────────────────
+function showHint() { $('mapHint').style.opacity = '1'; }
+function hideHint() { $('mapHint').style.opacity = '0'; }
+function setHint(t) { $('mapHint').textContent = t; }
+
+function renderPrompt() {
+  $('promptView').hidden = false;
+  $('resultView').hidden = true;
+  $('promptCity').textContent = current.name;
+  $('promptFlag').textContent = current.flag;
+  $('promptCountry').textContent = current.country;
+}
+
+function showResult(km, score) {
+  const v = verdict(km);
+  $('promptView').hidden = true;
+  $('resultView').hidden = false;
+  $('resultEmoji').textContent = v.emoji;
+  $('resultDist').textContent = `${fmtKm(km)} km away`;
+  $('resultVerdict').textContent = v.text;
+  $('resultScore').textContent = `Score this round: ${score} / 1000`;
+  $('nextBtn').textContent = 'NEXT CITY →';
+}
+
+// ── Round flow ───────────────────────────────────────────────────────────────
+function pickCity() {
+  let pool = CITIES.filter(c => c.difficulty === difficulty);
+  if (regionFilter !== 'All') pool = pool.filter(c => c.region === regionFilter);
+  if (!pool.length) {
+    pool = CITIES.filter(c => regionFilter === 'All' || c.region === regionFilter);
+  }
+  if (!pool.length) pool = CITIES;
+  // Avoid immediate repeat of the same city when possible.
+  let next = pool[Math.floor(Math.random() * pool.length)];
+  if (current && pool.length > 1) {
+    let guard = 0;
+    while (next.name === current.name && guard++ < 8) next = pool[Math.floor(Math.random() * pool.length)];
+  }
+  return next;
+}
+
+function startRound() {
+  clearMarkers();
+  resetView();
+  clearGuessPin();
+  $('confirmBar').hidden = true;
+  round++;
+  current = pickCity();
+  gameState = 'guessing';
+  renderPrompt();
+  updateStatsBar();
+  setHint('tap anywhere to place your guess');
+  showHint();
+}
+
+function recordRound(km, score) {
+  sessionDistTotal += km;
+  sessionScoreTotal += score;
+  if (km < sessionBest.km) sessionBest = { km, city: current.name };
+  updateStatsBar();
+
+  // Persistent stats.
+  const s = loadStats();
+  s.totalRounds += 1;
+  s.totalScore += score;
+  s.totalDistanceKm += km;
+  if (km < s.bestGuessKm) { s.bestGuessKm = km; s.bestGuessCity = current.name; }
+  s.history.push({ city: current.name, guessKm: Math.round(km), score, ts: Date.now() });
+  if (s.history.length > 50) s.history = s.history.slice(-50);
+  saveStats(s);
+
+  recentKm.push(km);
+  if (recentKm.length > 20) recentKm = recentKm.slice(-20);
+  evaluateDifficulty();
+}
+
+function onNext() {
+  if (round % 10 === 0) { showSummary(); return; }
+  startRound();
+}
+
+// ── Solo session summary (every 10 rounds) ──────────────────────────────────
+function showSummary() {
+  gameState = 'summary';
+  const avg = Math.round(sessionDistTotal / round);
+  const total = sessionScoreTotal;
+  const best = sessionBest;
+  const diffLabel = DIFF_META[difficulty].label;
+  const diffEmoji = DIFF_META[difficulty].badge.slice(0, 2);
+
+  // Persist best session average.
+  const st = loadStats();
+  if (avg < st.bestSessionAvgKm) { st.bestSessionAvgKm = avg; saveStats(st); }
+
+  const copyText =
+`🌍 GeoRush — ${round} rounds
+${diffEmoji} ${diffLabel} difficulty
+🎯 Best: ${fmtKm(best.km)} km (${best.city})
+📍 Avg: ${fmtKm(avg)} km away
+🏆 ${total.toLocaleString('en-US')} / ${(round * 1000).toLocaleString('en-US')}
+▶ Play: ${PLAY_URL}`;
+
+  openModal(`
+    <h2>🌍 GeoRush — ${round} Rounds</h2>
+    <hr class="gr-divider">
+    <div class="gr-summary-row">${diffEmoji} Difficulty reached: <b>${diffLabel}</b></div>
+    <div class="gr-summary-row">🎯 Best guess: <b>${escapeHtml(best.city)}</b> — ${fmtKm(best.km)} km</div>
+    <div class="gr-summary-row">📍 Avg distance: <b>${fmtKm(avg)} km</b></div>
+    <div class="gr-summary-row">🏆 Score: <b>${total.toLocaleString('en-US')} / ${(round * 1000).toLocaleString('en-US')}</b></div>
+    <hr class="gr-divider">
+    <button class="gr-btn" id="copyScoreBtn">📋 Copy Score</button>
+    <button class="gr-btn secondary" id="summaryContinueBtn">Keep Playing →</button>
+  `);
+  $('copyScoreBtn').addEventListener('click', () => copyToClipboard(copyText, $('copyScoreBtn'), '📋 Copy Score'));
+  $('summaryContinueBtn').addEventListener('click', () => { closeModal(); startRound(); });
+}
+
+// ── Region filter ────────────────────────────────────────────────────────────
+function onRegionChange(e) {
+  regionFilter = e.target.value;
+  // Take effect on the next round; current round continues unaffected.
+  if (gameState === 'guessing') {
+    // restart current round with new filter for immediacy
+    round--; startRound();
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function copyToClipboard(text, btn, restore) {
+  const done = () => { if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = restore; }, 1600); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else { fallbackCopy(text, done); }
+}
+function fallbackCopy(text, done) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); done();
+  } catch {}
+}
+
+// ── Modal helpers ────────────────────────────────────────────────────────────
+function openModal(html) { $('modalBody').innerHTML = html; $('overlay').hidden = false; }
+function closeModal() { $('overlay').hidden = true; $('modalBody').innerHTML = ''; }
+
+function openSettings() {
+  openModal(`
+    <h2>⚙️ Settings</h2>
+    <p class="sub">3D globe practice — solo mode.</p>
+    <button class="gr-btn secondary" id="closeSettings">Close</button>
+  `);
+  $('closeSettings').addEventListener('click', closeModal);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+function startSolo() {
+  difficulty = 'easy';
+  round = 0;
+  current = null;
+  gameState = 'idle';
+  startRound();
+}
+
+function boot() {
+  $('nextBtn').addEventListener('click', onNext);
+  $('confirmBtn').addEventListener('click', commitGuess);
+  $('clearBtn').addEventListener('click', clearGuessPin);
+  $('settingsBtn').addEventListener('click', openSettings);
+  $('regionFilter').addEventListener('change', onRegionChange);
+
+  initGlobe();
+  startSolo();
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+</script>
+</body>
+</html>
