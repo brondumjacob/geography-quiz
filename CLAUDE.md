@@ -63,10 +63,14 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   session summary, Clear/Confirm flow) but renders an interactive **Globe.gl WebGL globe**
   instead of the 2D SVG map.
 - **CDN exception to Rule 1**: this page (and ONLY this page) loads external deps at
-  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`), Earth textures
-  (`unpkg.com/three-globe/example/img/` blue-marble, topology, night-sky), and country
-  borders (topojson-client + `world-atlas@2/countries-110m.json`). The 2D `georush.html`
-  remains fully self-contained.
+  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`) and Earth textures
+  (`unpkg.com/three-globe/example/img/` blue-marble, topology, night-sky). The 2D
+  `georush.html` remains fully self-contained. (Country-border polygons were removed per
+  request — the textured globe has no vector outlines.)
+- **Globe sizing / click target**: the neutral view altitude is `GLOBE_VIEW_ALT = 1.45`
+  (and `controls.maxDistance = 360`) so the globe nearly fills the map card. This matters
+  for clicking: `onGlobeClick` only fires when the ray hits the globe sphere, so a small/far
+  globe (the old `altitude: 2.5`) left most clicks landing in empty space and doing nothing.
 - **Separate localStorage key**: `georush3d_stats` — 2D and 3D stats are independent.
 - **Solo-only**: Challenge mode + Supabase leaderboards are NOT ported to the 3D page
   (deferred); they remain in the 2D `georush.html`.

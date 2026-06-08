@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
-<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
 <style>
   :root {
     --bg: #f2e5cb;
@@ -629,6 +628,8 @@ const CITIES = [
 // These no-ops let the solo game logic run without a real globe yet.
 // ─────────────────────────────────────────────────────────────────────────────
 let _globe = null;
+// Neutral view altitude: globe nearly fills the map card so taps land on its surface.
+const GLOBE_VIEW_ALT = 1.45;
 function initGlobe() {
   if (typeof Globe === 'undefined') {
     showGlobeError();
@@ -645,7 +646,7 @@ function initGlobe() {
     const c = _globe.controls();
     c.enablePan = false;
     c.minDistance = 140;
-    c.maxDistance = 500;
+    c.maxDistance = 360;
     c.autoRotate = false;
     c.rotateSpeed = 0.7;
     c.zoomSpeed = 0.8;
@@ -653,30 +654,16 @@ function initGlobe() {
       _globe.width(el.clientWidth).height(el.clientHeight);
     });
     _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
-    _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
+    _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT });
     hideMapStatus();
     window.__test = Object.assign(window.__test || {}, {
       dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
       pointsCount: () => (_globe ? _globe.pointsData().length : 0),
       arcsCount: () => (_globe ? _globe.arcsData().length : 0),
       labelsCount: () => (_globe ? _globe.labelsData().length : 0),
-      polygonsCount: () => (_globe ? _globe.polygonsData().length : 0),
       state: () => gameState,
     });
     window.__globeReady = true;
-    // Progressive country border outlines — non-blocking, fails gracefully.
-    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-      .then(r => r.json())
-      .then(topo => {
-        if (typeof topojson === 'undefined' || !_globe) return;
-        const feats = topojson.feature(topo, topo.objects.countries).features;
-        _globe.polygonsData(feats)
-          .polygonCapColor(() => 'rgba(0,0,0,0)')
-          .polygonSideColor(() => 'rgba(0,0,0,0)')
-          .polygonStrokeColor(() => 'rgba(90,70,48,0.55)')
-          .polygonAltitude(0.005);
-      })
-      .catch(() => {/* textures alone remain — graceful */});
   } catch (err) {
     _globe = null;
     showGlobeError();
@@ -735,7 +722,7 @@ function commitGuess() {
   recordRound(km, score);
 }
 
-function resetView(){ if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600); }
+function resetView(){ if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT }, 600); }
 function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
 // Static fallback message with a real link to the 2D version. No user input → safe innerHTML.
 function showGlobeError(){
