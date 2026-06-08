@@ -652,12 +652,31 @@ function initGlobe() {
   window.__test = Object.assign(window.__test || {}, {
     dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
     pointsCount: () => (_globe ? _globe.pointsData().length : 0),
+    arcsCount: () => (_globe ? _globe.arcsData().length : 0),
+    labelsCount: () => (_globe ? _globe.labelsData().length : 0),
     state: () => gameState,
   });
   window.__globeReady = true;
 }
-function drawResult(){}
-function clearMarkers(){}
+function drawResult(gLat, gLng) {
+  const tLat = current.lat, tLng = current.lon;
+  _globe
+    .pointsData([
+      { lat: gLat, lng: gLng, color: '#b04a32' },
+      { lat: tLat, lng: tLng, color: '#6a8c44' },
+    ]).pointColor('color').pointAltitude(0.02).pointRadius(0.5)
+    .arcsData([{ startLat: gLat, startLng: gLng, endLat: tLat, endLng: tLng }])
+    .arcColor(() => '#5a4630').arcStroke(0.5)
+    .arcDashLength(0.4).arcDashGap(0.2).arcDashAnimateTime(1500)
+    .labelsData([{ lat: tLat, lng: tLng, text: current.name }])
+    .labelLat('lat').labelLng('lng').labelText('text')
+    .labelSize(1.2).labelColor(() => '#2a1d12').labelDotRadius(0.3);
+  _globe.pointOfView({ lat: (gLat+tLat)/2, lng: (gLng+tLng)/2 }, 800);
+}
+
+function clearMarkers() {
+  if (_globe) _globe.pointsData([]).arcsData([]).labelsData([]);
+}
 
 let _pendingGuess = null;       // {lat, lng}
 
@@ -822,7 +841,9 @@ function startRound() {
   clearMarkers();
   resetView();
   clearGuessPin();
+  _pendingGuess = null;
   $('confirmBar').hidden = true;
+  if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600);
   round++;
   current = pickCity();
   gameState = 'guessing';
