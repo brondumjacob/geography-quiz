@@ -257,6 +257,37 @@
 <script>
 'use strict';
 
+// ⚠️  Replace SUPABASE_URL_HERE and SUPABASE_ANON_KEY_HERE
+//     with your actual Supabase project credentials before deploying.
+//     The anon key is safe to be public — security is enforced via RLS policies.
+const SB_URL = 'https://udesqjxpetlzltdasfxh.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkZXNxanhwZXRsemx0ZGFzZnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDI1ODcsImV4cCI6MjA5NjUxODU4N30.zZI3FmCmHLw1pi5sqOkAwBDuvXhVPOaQGYT5y7LesOQ';
+
+async function sbGet(path) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+async function sbPost(path, body) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      method: 'POST',
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify(body)
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
 // ── Scoring & distance (per spec) ───────────────────────────────────────────
 const MAX_DIST_KM = 10000;
 function calcScore(distanceKm) {
@@ -685,6 +716,7 @@ function initGlobe() {
       globeTexture: () => _texRequested,
       difficultyForRound: (r) => difficultyForRound(r),
       currentDifficulty: () => difficulty,
+      hasChallengeApi: () => (typeof sbGet === 'function' && typeof sbPost === 'function'),
     });
     window.__globeReady = true;
   } catch (err) {
@@ -766,6 +798,15 @@ let difficultyMode = 'auto';
 let regionFilter = 'All';
 let round = 0;
 let current = null;
+
+const params = new URLSearchParams(window.location.search);
+const challengeId = params.get('c');
+const mode = challengeId ? 'challenge' : 'solo';
+
+let challenge = null;
+let challengePlayer = '';
+let challengeRounds = [];
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
 // Session accumulators (reset per page load)
 let sessionDistTotal = 0;
