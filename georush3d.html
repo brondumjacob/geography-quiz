@@ -633,6 +633,9 @@ const CITIES = [
 let _globe = null;
 // Neutral view altitude: globe nearly fills the map card so taps land on its surface.
 const GLOBE_VIEW_ALT = 1.45;
+const GLOBE_TEX_HI = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg';
+const GLOBE_TEX_LO = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
+let _texRequested = GLOBE_TEX_HI;
 function initGlobe() {
   if (typeof Globe === 'undefined') {
     showGlobeError();
@@ -641,7 +644,7 @@ function initGlobe() {
   try {
     const el = document.getElementById('map');
     _globe = Globe()(el)
-      .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      .globeImageUrl(GLOBE_TEX_HI)
       .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
       .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
       .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
@@ -662,6 +665,10 @@ function initGlobe() {
     _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
     _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT });
     hideMapStatus();
+    const _img = new Image();
+    _img.crossOrigin = 'anonymous';
+    _img.onerror = () => { _texRequested = GLOBE_TEX_LO; if (_globe) _globe.globeImageUrl(GLOBE_TEX_LO); };
+    _img.src = GLOBE_TEX_HI;
     window.__test = Object.assign(window.__test || {}, {
       dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
       pointsCount: () => (_globe ? _globe.pointsData().length : 0),
@@ -669,6 +676,7 @@ function initGlobe() {
       labelsCount: () => (_globe ? _globe.labelsData().length : 0),
       state: () => gameState,
       minDistance: () => (_globe ? _globe.controls().minDistance : null),
+      globeTexture: () => _texRequested,
     });
     window.__globeReady = true;
   } catch (err) {
