@@ -646,15 +646,51 @@ function initGlobe() {
   window.addEventListener('resize', () => {
     _globe.width(el.clientWidth).height(el.clientHeight);
   });
+  _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
   _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
   hideMapStatus();
+  window.__test = Object.assign(window.__test || {}, {
+    dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
+    pointsCount: () => (_globe ? _globe.pointsData().length : 0),
+    state: () => gameState,
+  });
   window.__globeReady = true;
 }
 function drawResult(){}
 function clearMarkers(){}
-function dropGuessPin(){}
-function clearGuessPin(){}
-function commitGuess(){}
+
+let _pendingGuess = null;       // {lat, lng}
+
+function dropGuessPin(lat, lng) {
+  if (gameState !== 'guessing' || !current) return;
+  _pendingGuess = { lat, lng };
+  _globe.pointsData([{ lat, lng, kind: 'pending' }])
+    .pointColor(() => '#b04a32').pointAltitude(0.02).pointRadius(0.5);
+  $('confirmBar').hidden = false;
+  setHint('drag to rotate • pinch to zoom • tap to move the pin');
+}
+
+function clearGuessPin() {
+  _pendingGuess = null;
+  if (_globe) _globe.pointsData([]);
+  $('confirmBar').hidden = true;
+  setHint('tap the globe to place your guess');
+}
+
+function commitGuess() {
+  if (gameState !== 'guessing' || !_pendingGuess || !current) return;
+  const { lat, lng } = _pendingGuess;
+  const km = haversineKm(lat, lng, current.lat, current.lon);
+  const score = calcScore(km);
+  _pendingGuess = null;
+  $('confirmBar').hidden = true;
+  gameState = 'revealed';
+  hideHint();
+  drawResult(lat, lng);
+  showResult(km, score);
+  recordRound(km, score);
+}
+
 function resetView(){}
 function showMapStatus(m){ const s = $('mapStatus'); if (s){ s.textContent = m; s.style.display = 'flex'; } }
 function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
