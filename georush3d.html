@@ -716,7 +716,9 @@ function initGlobe() {
       globeTexture: () => _texRequested,
       difficultyForRound: (r) => difficultyForRound(r),
       currentDifficulty: () => difficulty,
-      hasChallengeApi: () => (typeof sbGet === 'function' && typeof sbPost === 'function'),
+      hasChallengeApi: () => (typeof sbGet === 'function' && typeof sbPost === 'function' && typeof createChallenge === 'function'),
+      challengeMode: () => mode,
+      challengeRoundsCount: () => challengeRounds.length,
     });
     window.__globeReady = true;
   } catch (err) {
@@ -779,6 +781,7 @@ function commitGuess() {
 
 function resetView(){ if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT }, 600); }
 function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
+function showMapStatus(msg){ const s = $('mapStatus'); if (s){ s.textContent = msg; s.style.display = 'flex'; } }
 // Static fallback message with a real link to the 2D version. No user input → safe innerHTML.
 function showGlobeError(){
   const s = $('mapStatus');
@@ -866,8 +869,15 @@ function resolveDifficulty() {
 
 // ── Stats bar ────────────────────────────────────────────────────────────────
 function updateStatsBar() {
-  $('roundLabel').textContent = `Round ${Math.max(1, round)}`;
-  $('diffBadge').textContent = DIFF_META[difficulty].badge;
+  $('roundLabel').textContent = mode === 'challenge'
+    ? `Round ${round} / ${challenge ? challenge.rounds : '—'}`
+    : `Round ${Math.max(1, round)}`;
+  const badge = $('diffBadge');
+  if (mode === 'challenge') {
+    badge.textContent = '🏆 Challenge';
+  } else {
+    badge.textContent = DIFF_META[difficulty].badge;
+  }
   const avg = round > 0 ? Math.round(sessionDistTotal / round) : null;
   $('avgLabel').textContent = avg == null ? 'Avg: — km' : `Avg: ${fmtKm(avg)} km`;
 }
@@ -893,7 +903,12 @@ function showResult(km, score) {
   $('resultDist').textContent = `${fmtKm(km)} km away`;
   $('resultVerdict').textContent = v.text;
   $('resultScore').textContent = `Score this round: ${score} / 1000`;
-  $('nextBtn').textContent = 'NEXT CITY →';
+  const btn = $('nextBtn');
+  if (mode === 'challenge' && challenge && round >= challenge.rounds) {
+    btn.textContent = 'SEE RESULTS →';
+  } else {
+    btn.textContent = 'NEXT CITY →';
+  }
 }
 
 // ── Round flow ───────────────────────────────────────────────────────────────
@@ -920,14 +935,16 @@ function startRound() {
   _pendingGuess = null;
   $('confirmBar').hidden = true;
   round++;
-  const prevDiff = difficulty;
-  difficulty = resolveDifficulty();
-  if (round > 1 && difficulty !== prevDiff) {
-    const order = { easy: 0, medium: 1, hard: 2 };
-    const up = order[difficulty] > order[prevDiff];
-    showToast(`${up ? '📈' : '📉'} Difficulty → ${DIFF_META[difficulty].label} ${DIFF_META[difficulty].badge.slice(0, 2)}`);
+  if (mode !== 'challenge') {
+    const prevDiff = difficulty;
+    difficulty = resolveDifficulty();
+    if (round > 1 && difficulty !== prevDiff) {
+      const order = { easy: 0, medium: 1, hard: 2 };
+      const up = order[difficulty] > order[prevDiff];
+      showToast(`${up ? '📈' : '📉'} Difficulty → ${DIFF_META[difficulty].label} ${DIFF_META[difficulty].badge.slice(0, 2)}`);
+    }
   }
-  current = pickCity();
+  current = mode === 'challenge' ? challenge.cities[round - 1] : pickCity();
   gameState = 'guessing';
   renderPrompt();
   updateStatsBar();
@@ -950,9 +967,18 @@ function recordRound(km, score) {
   s.history.push({ city: current.name, guessKm: Math.round(km), score, ts: Date.now() });
   if (s.history.length > 50) s.history = s.history.slice(-50);
   saveStats(s);
+
+  if (mode === 'challenge') {
+    challengeRounds.push({ city: current.name, km, score });
+  }
 }
 
 function onNext() {
+  if (mode === 'challenge') {
+    if (round >= challenge.rounds) { finishChallenge(); return; }
+    startRound();
+    return;
+  }
   if (round % 10 === 0) { showSummary(); return; }
   startRound();
 }
@@ -1030,13 +1056,227 @@ function fallbackCopy(text, done) {
 function openModal(html) { $('modalBody').innerHTML = html; $('overlay').hidden = false; }
 function closeModal() { $('overlay').hidden = true; $('modalBody').innerHTML = ''; }
 
+function generateChallengeId() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
 function openSettings() {
   openModal(`
     <h2>⚙️ Settings</h2>
-    <p class="sub">3D globe practice — solo mode.</p>
+    <p class="sub">Challenge a friend to beat your pinpointing.</p>
+    <button class="gr-btn" id="openChallengeCreate">🏆 Challenge Friends</button>
     <button class="gr-btn secondary" id="closeSettings">Close</button>
   `);
+  $('openChallengeCreate').addEventListener('click', showChallengeCreate);
   $('closeSettings').addEventListener('click', closeModal);
+}
+
+function showChallengeCreate() {
+  gameState = 'challenge_create';
+  let selRounds = 10;
+  openModal(`
+    <h2>🏆 Create a Challenge</h2>
+    <p class="sub">A fixed set of cities — everyone plays the same ones.</p>
+    <div class="gr-field">
+      <label for="ccName">Your name</label>
+      <input class="gr-input" id="ccName" maxlength="20" placeholder="e.g. Jacob" />
+    </div>
+    <div class="gr-field">
+      <label for="ccRegion">Region</label>
+      <select id="ccRegion">
+        <option value="All">All regions</option>
+        <option value="Africa">Africa</option>
+        <option value="Europe">Europe</option>
+        <option value="Americas">Americas</option>
+        <option value="Asia">Asia</option>
+        <option value="Oceania">Oceania</option>
+      </select>
+    </div>
+    <div class="gr-field">
+      <label>Rounds</label>
+      <div class="gr-rounds" id="ccRounds">
+        <button class="gr-round-opt" data-r="5">5</button>
+        <button class="gr-round-opt active" data-r="10">10</button>
+        <button class="gr-round-opt" data-r="20">20</button>
+      </div>
+    </div>
+    <div id="ccError" class="gr-err" hidden></div>
+    <button class="gr-btn" id="ccCreate">Create Challenge →</button>
+    <button class="gr-btn secondary" id="ccCancel">Cancel</button>
+  `);
+  $('ccRounds').addEventListener('click', e => {
+    const b = e.target.closest('.gr-round-opt'); if (!b) return;
+    selRounds = parseInt(b.dataset.r, 10);
+    [...$('ccRounds').children].forEach(c => c.classList.toggle('active', c === b));
+  });
+  $('ccCancel').addEventListener('click', closeModal);
+  $('ccCreate').addEventListener('click', () => createChallenge($('ccName').value.trim(), $('ccRegion').value, selRounds));
+}
+
+function buildChallengeCities(region, rounds) {
+  let pool = CITIES.filter(c => region === 'All' || c.region === region);
+  if (pool.length < rounds) pool = CITIES.slice();
+  // Shuffle and take `rounds`.
+  const shuffled = pool.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, rounds);
+}
+
+async function createChallenge(name, region, rounds) {
+  const err = $('ccError');
+  if (!name) { err.textContent = 'Please enter your name.'; err.hidden = false; return; }
+  err.hidden = true;
+  const btn = $('ccCreate');
+  btn.disabled = true; btn.textContent = 'Creating…';
+
+  const id = generateChallengeId();
+  const cities = buildChallengeCities(region, rounds);
+  const res = await sbPost('challenges', { id, cities, region, rounds, created_by: name });
+
+  if (!res) {
+    btn.disabled = false; btn.textContent = 'Create Challenge →';
+    err.textContent = '⚠️ Could not reach the server. Check your connection and try again.';
+    err.hidden = false;
+    return;
+  }
+
+  const url = `${PLAY_URL}?c=${id}`;
+  openModal(`
+    <h2>✅ Challenge created!</h2>
+    <p class="sub">Share this link — anyone who opens it plays the same ${rounds} cities.</p>
+    <div class="gr-link-box"><code id="ccLink">${escapeHtml(url)}</code></div>
+    <button class="gr-btn" id="ccCopy">📋 Copy Link</button>
+    <button class="gr-btn secondary" id="ccClose">Done</button>
+  `);
+  $('ccCopy').addEventListener('click', () => copyToClipboard(url, $('ccCopy'), '📋 Copy Link'));
+  $('ccClose').addEventListener('click', () => {
+    closeModal();
+    if (mode === 'solo') { if (gameState === 'challenge_create') startRound(); }
+  });
+}
+
+// ── Loading & playing a challenge ────────────────────────────────────────────
+async function initChallenge() {
+  showMapStatus('Loading challenge…');
+  const rows = await sbGet(`challenges?id=eq.${encodeURIComponent(challengeId)}&select=*`);
+  if (!rows || !rows.length) {
+    hideMapStatus();
+    openModal(`
+      <h2>Challenge not found</h2>
+      <p class="sub">This challenge link is invalid or could not be loaded.</p>
+      <button class="gr-btn" id="goSolo">Play Solo Instead →</button>
+    `);
+    $('goSolo').addEventListener('click', () => { window.location.href = PLAY_URL; });
+    return;
+  }
+  challenge = rows[0];
+  // Normalize cities (jsonb → array of city objects).
+  if (typeof challenge.cities === 'string') {
+    try { challenge.cities = JSON.parse(challenge.cities); } catch { challenge.cities = []; }
+  }
+  if (!Array.isArray(challenge.cities) || !challenge.cities.length) {
+    challenge.cities = buildChallengeCities(challenge.region || 'All', challenge.rounds || 10);
+  }
+  if (!challenge.rounds) challenge.rounds = challenge.cities.length;
+  hideMapStatus();
+  promptChallengeName();
+}
+
+function promptChallengeName() {
+  openModal(`
+    <h2>🏆 GeoRush Challenge</h2>
+    <p class="sub">${challenge.rounds} ${challenge.region && challenge.region !== 'All' ? escapeHtml(challenge.region) + ' ' : ''}cities${challenge.created_by ? ' • by ' + escapeHtml(challenge.created_by) : ''}. Enter your name to play.</p>
+    <div class="gr-field">
+      <label for="cpName">Your name</label>
+      <input class="gr-input" id="cpName" maxlength="20" placeholder="e.g. Sarah" />
+    </div>
+    <div id="cpError" class="gr-err" hidden></div>
+    <button class="gr-btn" id="cpStart">Start Challenge →</button>
+  `);
+  const start = () => {
+    const v = $('cpName').value.trim();
+    if (!v) { $('cpError').textContent = 'Please enter your name.'; $('cpError').hidden = false; return; }
+    challengePlayer = v;
+    closeModal();
+    startRound();
+  };
+  $('cpStart').addEventListener('click', start);
+  $('cpName').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+}
+
+async function finishChallenge() {
+  gameState = 'challenge_complete';
+  const n = challengeRounds.length || 1;
+  const avg = Math.round(challengeRounds.reduce((a, r) => a + r.km, 0) / n);
+  const total = challengeRounds.reduce((a, r) => a + r.score, 0);
+  let best = { km: Infinity, city: '' };
+  challengeRounds.forEach(r => { if (r.km < best.km) best = { km: r.km, city: r.city }; });
+
+  showLeaderboardLoading();
+  await sbPost('scores', {
+    challenge_id: challenge.id,
+    player_name: challengePlayer,
+    avg_distance_km: avg,
+    total_score: total,
+    best_guess_city: best.city,
+    best_guess_km: Math.round(best.km),
+    rounds_played: n,
+  });
+  await renderLeaderboard({ avg, total, best });
+}
+
+function showLeaderboardLoading() {
+  openModal(`
+    <h2>🏆 GeoRush Challenge</h2>
+    <p class="sub">Submitting your score…</p>
+    <p class="gr-muted">Loading leaderboard…</p>
+  `);
+}
+
+async function renderLeaderboard(mine) {
+  const rows = await sbGet(`scores?challenge_id=eq.${encodeURIComponent(challenge.id)}&order=total_score.desc&select=*`);
+  const regionLabel = challenge.region && challenge.region !== 'All' ? `${challenge.region} ` : '';
+  let body;
+  if (!rows) {
+    body = `<p class="gr-err">⚠️ Could not load the leaderboard (network issue).</p>`;
+  } else {
+    let myIndex = -1;
+    rows.forEach((r, i) => {
+      if (myIndex === -1 && r.player_name === challengePlayer &&
+          r.total_score === mine.total && r.avg_distance_km === mine.avg) myIndex = i;
+    });
+    const trs = rows.map((r, i) => {
+      const v = verdict(r.avg_distance_km);
+      const rank = i < 3 ? RANK_MEDALS[i] : (i + 1) + '.';
+      return `<tr class="${i === myIndex ? 'me' : ''}">
+        <td class="rank">${rank}</td>
+        <td class="name">${escapeHtml(r.player_name || '—')}</td>
+        <td class="num">${v.emoji} ${fmtKm(r.avg_distance_km)} km</td>
+        <td class="num">${Number(r.total_score).toLocaleString('en-US')} pts</td>
+      </tr>`;
+    }).join('');
+    body = `<table class="gr-lb">${trs || `<tr><td class="gr-muted">No scores yet.</td></tr>`}</table>`;
+  }
+
+  openModal(`
+    <h2>🏆 GeoRush Challenge</h2>
+    <p class="sub">${challenge.rounds} ${escapeHtml(regionLabel)}Cities</p>
+    ${body}
+    <hr class="gr-divider">
+    <button class="gr-btn" id="lbShare">📋 Share My Score</button>
+    <button class="gr-btn secondary" id="lbNew">Create New Challenge</button>
+  `);
+  const shareText =
+`🌍 GeoRush Challenge — ${challenge.rounds} cities
+🎯 ${challengePlayer}
+📍 Avg: ${fmtKm(mine.avg)} km away
+🏆 ${mine.total.toLocaleString('en-US')} pts
+▶ Play: ${PLAY_URL}?c=${challenge.id}`;
+  $('lbShare').addEventListener('click', () => copyToClipboard(shareText, $('lbShare'), '📋 Share My Score'));
+  $('lbNew').addEventListener('click', showChallengeCreate);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1058,8 +1298,15 @@ function boot() {
   $('regionFilter').addEventListener('change', onRegionChange);
   $('diffMode').addEventListener('change', onDiffModeChange);
 
+  if (mode === 'challenge') {
+    $('regionFilter').style.display = 'none';
+    $('diffMode').style.display = 'none';
+    $('settingsBtn').style.display = 'none';
+  }
+
   initGlobe();
-  startSolo();
+  if (mode === 'challenge') initChallenge();
+  else startSolo();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
