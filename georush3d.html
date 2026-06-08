@@ -627,7 +627,29 @@ const CITIES = [
 // 3D Globe layer — STUBBED for Task 1. Filled in by later tasks (Globe.gl).
 // These no-ops let the solo game logic run without a real globe yet.
 // ─────────────────────────────────────────────────────────────────────────────
-function initGlobe(){}
+let _globe = null;
+function initGlobe() {
+  const el = document.getElementById('map');
+  _globe = Globe()(el)
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+    .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
+    .width(el.clientWidth).height(el.clientHeight);
+  const c = _globe.controls();
+  c.enablePan = false;
+  c.minDistance = 140;
+  c.maxDistance = 500;
+  c.autoRotate = false;
+  c.rotateSpeed = 0.7;
+  c.zoomSpeed = 0.8;
+  window.addEventListener('resize', () => {
+    _globe.width(el.clientWidth).height(el.clientHeight);
+  });
+  _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
+  hideMapStatus();
+  window.__globeReady = true;
+}
 function drawResult(){}
 function clearMarkers(){}
 function dropGuessPin(){}
