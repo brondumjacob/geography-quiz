@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
 <style>
   :root {
     --bg: #f2e5cb;
@@ -654,9 +655,23 @@ function initGlobe() {
     pointsCount: () => (_globe ? _globe.pointsData().length : 0),
     arcsCount: () => (_globe ? _globe.arcsData().length : 0),
     labelsCount: () => (_globe ? _globe.labelsData().length : 0),
+    polygonsCount: () => (_globe ? _globe.polygonsData().length : 0),
     state: () => gameState,
   });
   window.__globeReady = true;
+  // Progressive country border outlines — non-blocking, fails gracefully.
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+    .then(r => r.json())
+    .then(topo => {
+      if (typeof topojson === 'undefined' || !_globe) return;
+      const feats = topojson.feature(topo, topo.objects.countries).features;
+      _globe.polygonsData(feats)
+        .polygonCapColor(() => 'rgba(0,0,0,0)')
+        .polygonSideColor(() => 'rgba(0,0,0,0)')
+        .polygonStrokeColor(() => 'rgba(90,70,48,0.55)')
+        .polygonAltitude(0.005);
+    })
+    .catch(() => {/* textures alone remain — graceful */});
 }
 function drawResult(gLat, gLng) {
   const tLat = current.lat, tLng = current.lon;
