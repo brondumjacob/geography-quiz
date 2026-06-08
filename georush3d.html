@@ -735,8 +735,7 @@ function commitGuess() {
   recordRound(km, score);
 }
 
-function resetView(){}
-function showMapStatus(m){ const s = $('mapStatus'); if (s){ s.textContent = m; s.style.display = 'flex'; } }
+function resetView(){ if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600); }
 function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
 // Static fallback message with a real link to the 2D version. No user input → safe innerHTML.
 function showGlobeError(){
@@ -876,7 +875,6 @@ function startRound() {
   clearGuessPin();
   _pendingGuess = null;
   $('confirmBar').hidden = true;
-  if (_globe) _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 }, 600);
   round++;
   current = pickCity();
   gameState = 'guessing';
