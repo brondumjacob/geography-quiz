@@ -196,6 +196,12 @@
       <div class="gr-subtitle">city pinpointing practice</div>
     </div>
     <div class="gr-header-actions">
+      <select id="diffMode" class="gr-select" aria-label="Difficulty">
+        <option value="auto">Auto</option>
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard">Hard</option>
+      </select>
       <select id="regionFilter" class="gr-select" aria-label="Region filter">
         <option value="All">All regions</option>
         <option value="Africa">Africa</option>
@@ -677,6 +683,8 @@ function initGlobe() {
       state: () => gameState,
       minDistance: () => (_globe ? _globe.controls().minDistance : null),
       globeTexture: () => _texRequested,
+      difficultyForRound: (r) => difficultyForRound(r),
+      currentDifficulty: () => difficulty,
     });
     window.__globeReady = true;
   } catch (err) {
@@ -754,12 +762,12 @@ function showGlobeError(){
 let gameState = 'loading';
 
 let difficulty = 'easy';
+let difficultyMode = 'auto';
 let regionFilter = 'All';
 let round = 0;
 let current = null;
 
 // Session accumulators (reset per page load)
-let recentKm = [];          // rolling window for difficulty scaling
 let sessionDistTotal = 0;
 let sessionScoreTotal = 0;
 let sessionBest = { km: Infinity, city: '' };
@@ -807,19 +815,12 @@ function showToast(msg) {
 }
 
 // ── Difficulty auto-scaling (Solo) ──────────────────────────────────────────
-function evaluateDifficulty() {
-  if (recentKm.length < 5) return;
-  const window5 = recentKm.slice(-5);
-  const avg = window5.reduce((a, b) => a + b, 0) / window5.length;
-  const prev = difficulty;
-  if (difficulty === 'easy' && avg < 400) difficulty = 'medium';
-  else if (difficulty === 'medium' && avg < 600) difficulty = 'hard';
-  else if (difficulty === 'medium' && avg > 2500) difficulty = 'easy';
-  else if (difficulty === 'hard' && avg > 2000) difficulty = 'medium';
-  if (difficulty !== prev) {
-    const up = (prev === 'easy') || (prev === 'medium' && difficulty === 'hard');
-    showToast(`${up ? '📈' : '📉'} Difficulty → ${DIFF_META[difficulty].label} ${DIFF_META[difficulty].badge.slice(0, 2)}`);
-  }
+function difficultyForRound(r) {
+  const i = ((r - 1) % 10 + 10) % 10;
+  return i < 4 ? 'easy' : i < 6 ? 'medium' : 'hard';
+}
+function resolveDifficulty() {
+  return difficultyMode === 'auto' ? difficultyForRound(round) : difficultyMode;
 }
 
 // ── Stats bar ────────────────────────────────────────────────────────────────
@@ -878,6 +879,13 @@ function startRound() {
   _pendingGuess = null;
   $('confirmBar').hidden = true;
   round++;
+  const prevDiff = difficulty;
+  difficulty = resolveDifficulty();
+  if (round > 1 && difficulty !== prevDiff) {
+    const order = { easy: 0, medium: 1, hard: 2 };
+    const up = order[difficulty] > order[prevDiff];
+    showToast(`${up ? '📈' : '📉'} Difficulty → ${DIFF_META[difficulty].label} ${DIFF_META[difficulty].badge.slice(0, 2)}`);
+  }
   current = pickCity();
   gameState = 'guessing';
   renderPrompt();
@@ -901,10 +909,6 @@ function recordRound(km, score) {
   s.history.push({ city: current.name, guessKm: Math.round(km), score, ts: Date.now() });
   if (s.history.length > 50) s.history = s.history.slice(-50);
   saveStats(s);
-
-  recentKm.push(km);
-  if (recentKm.length > 20) recentKm = recentKm.slice(-20);
-  evaluateDifficulty();
 }
 
 function onNext() {
@@ -958,6 +962,11 @@ function onRegionChange(e) {
   }
 }
 
+function onDiffModeChange(e) {
+  difficultyMode = e.target.value;
+  if (gameState === 'guessing') { round--; startRound(); }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
@@ -1006,6 +1015,7 @@ function boot() {
   $('clearBtn').addEventListener('click', clearGuessPin);
   $('settingsBtn').addEventListener('click', openSettings);
   $('regionFilter').addEventListener('change', onRegionChange);
+  $('diffMode').addEventListener('change', onDiffModeChange);
 
   initGlobe();
   startSolo();
