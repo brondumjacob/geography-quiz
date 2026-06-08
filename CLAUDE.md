@@ -10,7 +10,7 @@ Files in repo root:
 - `africa.html`  — Country quiz, Africa — DO NOT TOUCH
 - `world.html`   — Country quiz, World  — DO NOT TOUCH
 - `georush.html` — [BUILT] GeoRush city pinpointing game
-- `georush3d.html` — [BUILT] GeoRush 3D — globe practice mode (Globe.gl, solo-only)
+- `georush3d.html` — [BUILT] GeoRush 3D — globe practice mode (Globe.gl, solo + challenge mode)
 - `index.html`   — [BUILT] Home page linking all three games
 
 ---
@@ -59,18 +59,24 @@ Deviations from / additions to the original spec below, kept in sync as work lan
 ### `georush3d.html` — 3D globe practice mode
 
 - Standalone 3D globe version that **reuses `georush.html`'s solo game logic** (CITIES
-  database, scoring, haversine, auto-scaling difficulty, region filter, localStorage,
+  database, scoring, haversine, difficulty control (manual + round-based auto), region filter, localStorage,
   session summary, Clear/Confirm flow) but renders an interactive **Globe.gl WebGL globe**
   instead of the 2D SVG map.
 - **CDN exception to Rule 1**: this page (and ONLY this page) loads external deps at
-  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`) and Earth textures
-  (`unpkg.com/three-globe/example/img/` blue-marble, topology, night-sky). The 2D
+  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`), a hi-res 4k Blue Marble day
+  texture (`raw.githubusercontent.com/turban/webgl-earth/.../2_no_clouds_4k.jpg`,
+  CORS-enabled) with a graceful fallback to the low-res
+  `unpkg.com/three-globe/example/img/earth-blue-marble.jpg` if it fails to load, plus the
+  topology bump and night-sky background textures from `unpkg.com/three-globe`. Hi-res is a
+  larger download → slightly slower first paint on mobile. The 2D
   `georush.html` remains fully self-contained. (Country-border polygons were removed per
   request — the textured globe has no vector outlines.)
 - **Globe sizing / click target**: the neutral view altitude is `GLOBE_VIEW_ALT = 1.45`
   (and `controls.maxDistance = 360`) so the globe nearly fills the map card. This matters
   for clicking: `onGlobeClick` only fires when the ray hits the globe sphere, so a small/far
   globe (the old `altitude: 2.5`) left most clicks landing in empty space and doing nothing.
+  `controls.minDistance` was lowered from 140 to `108` (globe radius is 100, so the camera
+  can approach to ~0.08 altitude) for maptap-style close-up zoom and more precise guesses.
 - **Mobile width fix**: the map card uses `aspect-ratio: 1.7/1` + `min-height: 300px`. On
   narrow screens the aspect-derived height fell below 300px, so the browser back-computed
   card *width* from the min-height (300 × 1.7 = 510px), overflowing the viewport. Fixed by
@@ -81,8 +87,19 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   `window.resize`-only listener never fired on initial settle). `overflow-x:hidden` on
   `html,body` is a final guard.
 - **Separate localStorage key**: `georush3d_stats` — 2D and 3D stats are independent.
-- **Solo-only**: Challenge mode + Supabase leaderboards are NOT ported to the 3D page
-  (deferred); they remain in the 2D `georush.html`.
+- **Difficulty (solo)**: a header picker offers **Auto · Easy · Medium · Hard** (default
+  Auto). Auto escalates by round number, maptap-style, looping every 10 rounds —
+  `difficultyForRound(r)` maps `((r-1)%10)` to rounds 1–4 Easy, 5–6 Medium, 7–10 Hard, then
+  repeats. This REPLACED the old rolling-average auto-scaler. Manual locks the pool to one
+  level. The 📈/📉 toast fires when the Auto level changes between rounds.
+- **Challenge mode (ported from 2D)**: `georush3d.html?c=ID` plays a fixed Supabase-backed
+  city set on the globe with a live leaderboard — same `challenges`/`scores` tables, same
+  live anon key, and the same `generateChallengeId`/`sbGet`/`sbPost`/`createChallenge`/
+  `initChallenge`/`renderLeaderboard` flow as `georush.html` (ported verbatim; only the
+  drop-pin / draw-arc calls use the globe API). In challenge mode the region filter and
+  difficulty picker are hidden and difficulty is fixed to the creator's set. `initChallenge`
+  clamps `challenge.rounds` to the number of available cities so a malformed Supabase row
+  can't index past the city array.
 - **Graceful fallback**: if WebGL is unavailable or the Globe.gl CDN fails, `#mapStatus`
   shows a message linking to the 2D `georush.html`; the game loop never crashes.
 - Linked from `index.html` via a "GeoRush 3D" featured card.
