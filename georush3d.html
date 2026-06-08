@@ -648,7 +648,7 @@ function initGlobe() {
       .width(el.clientWidth).height(el.clientHeight);
     const c = _globe.controls();
     c.enablePan = false;
-    c.minDistance = 140;
+    c.minDistance = 108;
     c.maxDistance = 360;
     c.autoRotate = false;
     c.rotateSpeed = 0.7;
@@ -668,6 +668,7 @@ function initGlobe() {
       arcsCount: () => (_globe ? _globe.arcsData().length : 0),
       labelsCount: () => (_globe ? _globe.labelsData().length : 0),
       state: () => gameState,
+      minDistance: () => (_globe ? _globe.controls().minDistance : null),
     });
     window.__globeReady = true;
   } catch (err) {
