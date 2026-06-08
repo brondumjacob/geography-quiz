@@ -10,6 +10,7 @@ Files in repo root:
 - `africa.html`  — Country quiz, Africa — DO NOT TOUCH
 - `world.html`   — Country quiz, World  — DO NOT TOUCH
 - `georush.html` — [BUILT] GeoRush city pinpointing game
+- `georush3d.html` — [BUILT] GeoRush 3D — globe practice mode (Globe.gl, solo-only)
 - `index.html`   — [BUILT] Home page linking all three games
 
 ---
@@ -54,6 +55,24 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   where the first finger of a two-finger pinch instantly committed a guess on iPhone.
   Rule 3's iOS constraints are preserved: `touch-action:none`, all touch handlers with
   `{passive:false}`, and `e.preventDefault()` in `touchstart`.
+
+### `georush3d.html` — 3D globe practice mode
+
+- Standalone 3D globe version that **reuses `georush.html`'s solo game logic** (CITIES
+  database, scoring, haversine, auto-scaling difficulty, region filter, localStorage,
+  session summary, Clear/Confirm flow) but renders an interactive **Globe.gl WebGL globe**
+  instead of the 2D SVG map.
+- **CDN exception to Rule 1**: this page (and ONLY this page) loads external deps at
+  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`), Earth textures
+  (`unpkg.com/three-globe/example/img/` blue-marble, topology, night-sky), and country
+  borders (topojson-client + `world-atlas@2/countries-110m.json`). The 2D `georush.html`
+  remains fully self-contained.
+- **Separate localStorage key**: `georush3d_stats` — 2D and 3D stats are independent.
+- **Solo-only**: Challenge mode + Supabase leaderboards are NOT ported to the 3D page
+  (deferred); they remain in the 2D `georush.html`.
+- **Graceful fallback**: if WebGL is unavailable or the Globe.gl CDN fails, `#mapStatus`
+  shows a message linking to the 2D `georush.html`; the game loop never crashes.
+- Linked from `index.html` via a "GeoRush 3D" featured card.
 
 ---
 
