@@ -630,48 +630,58 @@ const CITIES = [
 // ─────────────────────────────────────────────────────────────────────────────
 let _globe = null;
 function initGlobe() {
-  const el = document.getElementById('map');
-  _globe = Globe()(el)
-    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-    .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
-    .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
-    .width(el.clientWidth).height(el.clientHeight);
-  const c = _globe.controls();
-  c.enablePan = false;
-  c.minDistance = 140;
-  c.maxDistance = 500;
-  c.autoRotate = false;
-  c.rotateSpeed = 0.7;
-  c.zoomSpeed = 0.8;
-  window.addEventListener('resize', () => {
-    _globe.width(el.clientWidth).height(el.clientHeight);
-  });
-  _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
-  _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
-  hideMapStatus();
-  window.__test = Object.assign(window.__test || {}, {
-    dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
-    pointsCount: () => (_globe ? _globe.pointsData().length : 0),
-    arcsCount: () => (_globe ? _globe.arcsData().length : 0),
-    labelsCount: () => (_globe ? _globe.labelsData().length : 0),
-    polygonsCount: () => (_globe ? _globe.polygonsData().length : 0),
-    state: () => gameState,
-  });
-  window.__globeReady = true;
-  // Progressive country border outlines — non-blocking, fails gracefully.
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-    .then(r => r.json())
-    .then(topo => {
-      if (typeof topojson === 'undefined' || !_globe) return;
-      const feats = topojson.feature(topo, topo.objects.countries).features;
-      _globe.polygonsData(feats)
-        .polygonCapColor(() => 'rgba(0,0,0,0)')
-        .polygonSideColor(() => 'rgba(0,0,0,0)')
-        .polygonStrokeColor(() => 'rgba(90,70,48,0.55)')
-        .polygonAltitude(0.005);
-    })
-    .catch(() => {/* textures alone remain — graceful */});
+  if (typeof Globe === 'undefined') {
+    showGlobeError();
+    return;
+  }
+  try {
+    const el = document.getElementById('map');
+    _globe = Globe()(el)
+      .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+      .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+      .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
+      .width(el.clientWidth).height(el.clientHeight);
+    const c = _globe.controls();
+    c.enablePan = false;
+    c.minDistance = 140;
+    c.maxDistance = 500;
+    c.autoRotate = false;
+    c.rotateSpeed = 0.7;
+    c.zoomSpeed = 0.8;
+    window.addEventListener('resize', () => {
+      _globe.width(el.clientWidth).height(el.clientHeight);
+    });
+    _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
+    _globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
+    hideMapStatus();
+    window.__test = Object.assign(window.__test || {}, {
+      dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
+      pointsCount: () => (_globe ? _globe.pointsData().length : 0),
+      arcsCount: () => (_globe ? _globe.arcsData().length : 0),
+      labelsCount: () => (_globe ? _globe.labelsData().length : 0),
+      polygonsCount: () => (_globe ? _globe.polygonsData().length : 0),
+      state: () => gameState,
+    });
+    window.__globeReady = true;
+    // Progressive country border outlines — non-blocking, fails gracefully.
+    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+      .then(r => r.json())
+      .then(topo => {
+        if (typeof topojson === 'undefined' || !_globe) return;
+        const feats = topojson.feature(topo, topo.objects.countries).features;
+        _globe.polygonsData(feats)
+          .polygonCapColor(() => 'rgba(0,0,0,0)')
+          .polygonSideColor(() => 'rgba(0,0,0,0)')
+          .polygonStrokeColor(() => 'rgba(90,70,48,0.55)')
+          .polygonAltitude(0.005);
+      })
+      .catch(() => {/* textures alone remain — graceful */});
+  } catch (err) {
+    _globe = null;
+    showGlobeError();
+    return;
+  }
 }
 function drawResult(gLat, gLng) {
   const tLat = current.lat, tLng = current.lon;
@@ -728,6 +738,14 @@ function commitGuess() {
 function resetView(){}
 function showMapStatus(m){ const s = $('mapStatus'); if (s){ s.textContent = m; s.style.display = 'flex'; } }
 function hideMapStatus(){ const s = $('mapStatus'); if (s) s.style.display = 'none'; }
+// Static fallback message with a real link to the 2D version. No user input → safe innerHTML.
+function showGlobeError(){
+  const s = $('mapStatus');
+  if (s){
+    s.innerHTML = '3D globe failed to load. Try the <a href="georush.html">2D version</a>.';
+    s.style.display = 'flex';
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Game state machine — SOLO PRACTICE ONLY (no challenge mode)
