@@ -35,8 +35,10 @@
       var(--bg);
     min-height: 100vh;
     -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+    max-width: 100%;
   }
-  .gr-root { max-width: 640px; margin: 0 auto; padding: 18px 16px 28px; }
+  .gr-root { max-width: 640px; width: 100%; margin: 0 auto; padding: 18px 16px 28px; }
 
   /* Header */
   .gr-header {
@@ -79,10 +81,11 @@
   /* Map */
   .gr-map-card {
     background: var(--surface); border: 1.5px solid var(--line);
-    position: relative; aspect-ratio: 1.7 / 1; min-height: 300px; overflow: hidden;
+    position: relative; width: 100%; aspect-ratio: 1.7 / 1; min-height: 300px; overflow: hidden;
     margin-bottom: 12px;
   }
-  .gr-map { width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .gr-map { position: absolute; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .gr-map canvas { display: block; max-width: 100%; }
   .gr-map-hint {
     position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
     font-size: 12px; font-weight: 600; color: var(--ink-2); pointer-events: none;
@@ -650,9 +653,12 @@ function initGlobe() {
     c.autoRotate = false;
     c.rotateSpeed = 0.7;
     c.zoomSpeed = 0.8;
-    window.addEventListener('resize', () => {
-      _globe.width(el.clientWidth).height(el.clientHeight);
-    });
+    const syncSize = () => {
+      const w = el.clientWidth, h = el.clientHeight;
+      if (w > 0 && h > 0) _globe.width(w).height(h);
+    };
+    if (window.ResizeObserver) new ResizeObserver(syncSize).observe(el);
+    window.addEventListener('resize', syncSize);
     _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
     _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT });
     hideMapStatus();

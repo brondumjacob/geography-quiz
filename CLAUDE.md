@@ -71,6 +71,15 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   (and `controls.maxDistance = 360`) so the globe nearly fills the map card. This matters
   for clicking: `onGlobeClick` only fires when the ray hits the globe sphere, so a small/far
   globe (the old `altitude: 2.5`) left most clicks landing in empty space and doing nothing.
+- **Mobile width fix**: the map card uses `aspect-ratio: 1.7/1` + `min-height: 300px`. On
+  narrow screens the aspect-derived height fell below 300px, so the browser back-computed
+  card *width* from the min-height (300 × 1.7 = 510px), overflowing the viewport. Fixed by
+  giving `.gr-map-card` an explicit `width: 100%` (width becomes the definite dimension, so
+  aspect-ratio derives height from it, not vice-versa). `#map` is now `position:absolute;
+  inset:0` so the Globe.gl canvas can't push the container wider, and a `ResizeObserver` on
+  `#map` keeps the globe sized to its real container after layout/fonts settle (the old
+  `window.resize`-only listener never fired on initial settle). `overflow-x:hidden` on
+  `html,body` is a final guard.
 - **Separate localStorage key**: `georush3d_stats` — 2D and 3D stats are independent.
 - **Solo-only**: Challenge mode + Supabase leaderboards are NOT ported to the 3D page
   (deferred); they remain in the 2D `georush.html`.
