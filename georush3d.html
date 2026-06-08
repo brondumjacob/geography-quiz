@@ -1181,6 +1181,7 @@ async function initChallenge() {
     challenge.cities = buildChallengeCities(challenge.region || 'All', challenge.rounds || 10);
   }
   if (!challenge.rounds) challenge.rounds = challenge.cities.length;
+  challenge.rounds = Math.min(challenge.rounds, challenge.cities.length);
   hideMapStatus();
   promptChallengeName();
 }
