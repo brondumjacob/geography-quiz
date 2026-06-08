@@ -32,12 +32,28 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   - To regenerate: download `HYP_50M_SR_W` from naciscdn.org, `sips -Z 2048 -s format
     jpeg`, base64-encode, replace the `RELIEF_URI` constant.
 - **Map navigation**: mouse wheel-zoom and click-drag-pan are enabled in BOTH the
-  `guessing` and `revealed` states (previously revealed-only) so you can zoom/pan to
-  place a precise guess. A stationary click still places the guess; a drag does not
-  (guarded by `_mMoved`, which is intentionally NOT reset on mouseup so the trailing
-  `click` can tell a drag from a click). `startRound()` calls `resetZoom()` so each
-  new city starts at the full world view. Touch behavior is unchanged per Rule 3:
-  single-finger tap = guess (iOS-safe); pinch/pan remain post-reveal.
+  `guessing` and `revealed` states so you can zoom/pan to place a precise guess.
+  A stationary click drops/moves the guess pin; a drag does not (guarded by `_mMoved`,
+  which is intentionally NOT reset on mouseup so the trailing `click` can tell a drag
+  from a click). `startRound()` calls `resetZoom()` so each new city starts at the full
+  world view.
+- **Zoom-transform coordinate fix**: the map group `_g` carries the d3 zoom transform,
+  so a click's viewport coords MUST be run through `_getT().invert(...)` (via the
+  `clientToMap()` helper) before `svgToLatLon()` / drawing — otherwise a click while
+  zoomed lands at a completely different lat/lon (e.g. clicking NZ scored as Africa).
+  At zoom=1 the transform is identity, which is why the bug only showed when zoomed.
+- **MapTap-style confirm flow**: a tap/click no longer commits instantly. It drops a
+  *provisional* pin (`.gr-pending`, in map/group coords) and reveals a Clear/Confirm
+  bar (`#confirmBar`). The player can pan/pinch-zoom and re-tap to refine; the guess is
+  only scored on **Confirm** (`commitGuess()`). Clear (`clearGuessPin()`) removes the
+  pin. `dropGuessPin()` sets `_pendingGuess`; `startRound()` resets it and hides the bar.
+- **Touch (iOS-safe) gestures while guessing**: touch handlers now run in BOTH `guessing`
+  and `revealed`. One finger pans, two fingers pinch-zoom, in both states. A clean
+  single-finger tap (tracked via `_tap` with a `TAP_SLOP` of 10px; cleared on any
+  2-finger gesture) drops/moves the provisional pin on `touchend`. This fixes the bug
+  where the first finger of a two-finger pinch instantly committed a guess on iPhone.
+  Rule 3's iOS constraints are preserved: `touch-action:none`, all touch handlers with
+  `{passive:false}`, and `e.preventDefault()` in `touchstart`.
 
 ---
 

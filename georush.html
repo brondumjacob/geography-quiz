@@ -125,6 +125,11 @@
   .gr-btn.secondary { color: var(--ink); background: var(--surface); }
   .gr-btn.secondary:active { background: var(--bg-2); }
 
+  /* Provisional-guess confirm bar (maptap-style) */
+  .gr-confirm { display: flex; gap: 10px; }
+  .gr-confirm .gr-btn { flex: 1; }
+  .gr-confirm .gr-btn.secondary { flex: 0 0 34%; }
+
   /* Toast */
   .gr-toast {
     position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
@@ -220,6 +225,10 @@
       <span id="promptFlag" class="gr-flag"></span>
       <span id="promptCountry" class="gr-country"></span>
     </div>
+    <div id="confirmBar" class="gr-confirm" hidden>
+      <button id="clearBtn" class="gr-btn secondary">CLEAR</button>
+      <button id="confirmBtn" class="gr-btn">CONFIRM GUESS →</button>
+    </div>
     <div id="resultView" hidden>
       <div class="gr-result-head">
         <span id="resultEmoji" class="gr-result-emoji"></span>
@@ -262,8 +271,8 @@ window.__depsReady = true;
 // ⚠️  Replace SUPABASE_URL_HERE and SUPABASE_ANON_KEY_HERE
 //     with your actual Supabase project credentials before deploying.
 //     The anon key is safe to be public — security is enforced via RLS policies.
-const SB_URL = 'SUPABASE_URL_HERE';
-const SB_KEY = 'SUPABASE_ANON_KEY_HERE';
+const SB_URL = 'https://udesqjxpetlzltdasfxh.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkZXNxanhwZXRsemx0ZGFzZnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDI1ODcsImV4cCI6MjA5NjUxODU4N30.zZI3FmCmHLw1pi5sqOkAwBDuvXhVPOaQGYT5y7LesOQ';
 
 async function sbGet(path) {
   try {
@@ -790,24 +799,29 @@ function initMap(topology) {
             (clientY - rect.top)  * (_mapH / rect.height)];
   }
 
+  // Viewport SVG coords → map (group) coords. The map group carries the zoom
+  // transform, so we MUST undo it before reading lat/lon or drawing a pin —
+  // otherwise a click while zoomed lands somewhere completely different.
+  function clientToMap(clientX, clientY) {
+    const [vx, vy] = clientToSvg(clientX, clientY);
+    return _getT().invert([vx, vy]);
+  }
+
   // ── Touch Events (iOS Safari safe). passive:false + preventDefault. ────────
-  // While guessing: any tap = place guess pin (no panning).
-  // After reveal: 1 finger pans, 2 fingers pinch-zoom to explore.
-  let _pan = null, _pinch = null;
+  // Both guessing and revealed: 1 finger pans, 2 fingers pinch-zoom.
+  // A clean single-finger tap (no drag, no pinch) drops/moves the provisional
+  // guess pin — the guess is only locked in via the Confirm button.
+  let _pan = null, _pinch = null, _tap = null;
+  const TAP_SLOP = 10; // px of movement allowed before a touch stops being a tap
   _mDiv.addEventListener('touchstart', ev => {
     ev.preventDefault();
-    if (gameState === 'guessing') {
-      const t = ev.touches[0];
-      const [sx, sy] = clientToSvg(t.clientX, t.clientY);
-      placeGuess(sx, sy);
-      return;
-    }
-    if (gameState !== 'revealed') return;
+    if (gameState !== 'guessing' && gameState !== 'revealed') return;
     const ct = _getT();
     if (ev.touches.length === 1) {
       const t = ev.touches[0];
       _pan = { sx: t.clientX, sy: t.clientY, tx: ct.x, ty: ct.y, k: ct.k };
       _pinch = null;
+      _tap = { x: t.clientX, y: t.clientY, moved: false };
     } else if (ev.touches.length === 2) {
       const a = ev.touches[0], b = ev.touches[1];
       _pinch = {
@@ -816,14 +830,16 @@ function initMap(topology) {
         tx: ct.x, ty: ct.y, k: ct.k
       };
       _pan = null;
+      _tap = null; // two-finger gesture is never a tap
     }
   }, { passive: false });
 
   _mDiv.addEventListener('touchmove', ev => {
-    if (gameState !== 'revealed') { ev.preventDefault(); return; }
+    if (gameState !== 'guessing' && gameState !== 'revealed') { ev.preventDefault(); return; }
     ev.preventDefault();
     if (ev.touches.length === 1 && _pan) {
       const t = ev.touches[0];
+      if (_tap && Math.hypot(t.clientX - _tap.x, t.clientY - _tap.y) > TAP_SLOP) _tap.moved = true;
       _applyT(_pan.tx + (t.clientX - _pan.sx), _pan.ty + (t.clientY - _pan.sy), _pan.k);
     } else if (ev.touches.length >= 2 && _pinch) {
       const a = ev.touches[0], b = ev.touches[1];
@@ -836,15 +852,24 @@ function initMap(topology) {
   }, { passive: false });
 
   _mDiv.addEventListener('touchend', ev => {
-    if (ev.touches.length === 0) { _pan = null; _pinch = null; }
-    else if (ev.touches.length === 1 && _pinch) {
+    if (ev.touches.length === 0) {
+      // Clean single-finger tap while guessing → drop / move the provisional pin.
+      if (gameState === 'guessing' && _tap && !_tap.moved) {
+        const ct = ev.changedTouches[0];
+        const [mx, my] = clientToMap(ct.clientX, ct.clientY);
+        dropGuessPin(mx, my);
+      }
+      _pan = null; _pinch = null; _tap = null;
+    } else if (ev.touches.length === 1 && _pinch) {
+      // Lifted one finger of a pinch → keep panning with the finger that remains.
       const ct = _getT(), t = ev.touches[0];
       _pan = { sx: t.clientX, sy: t.clientY, tx: ct.x, ty: ct.y, k: ct.k };
       _pinch = null;
+      _tap = null;
     }
   }, { passive: false });
 
-  _mDiv.addEventListener('touchcancel', () => { _pan = null; _pinch = null; }, { passive: false });
+  _mDiv.addEventListener('touchcancel', () => { _pan = null; _pinch = null; _tap = null; }, { passive: false });
 
   // ── Mouse (desktop): click = guess, drag = pan (revealed), wheel = zoom ────
   const svgNode = _svg.node();
@@ -853,8 +878,8 @@ function initMap(topology) {
   // browsers fire at the end of a drag-to-pan gesture (_mMoved guards that).
   svgNode.addEventListener('click', e => {
     if (gameState !== 'guessing' || _mMoved) return;
-    const [sx, sy] = clientToSvg(e.clientX, e.clientY);
-    placeGuess(sx, sy);
+    const [mx, my] = clientToMap(e.clientX, e.clientY);
+    dropGuessPin(mx, my);
   });
 
   // Drag pans in BOTH guessing and revealed so you can line up a precise guess
@@ -1066,6 +1091,7 @@ function updateStatsBar() {
 // ── Prompt / result views ────────────────────────────────────────────────────
 function showHint() { $('mapHint').style.opacity = '1'; }
 function hideHint() { $('mapHint').style.opacity = '0'; }
+function setHint(t) { $('mapHint').textContent = t; }
 
 function renderPrompt() {
   $('promptView').hidden = false;
@@ -1111,22 +1137,53 @@ function pickCity() {
 function startRound() {
   clearMarkers();
   resetZoom();
+  _pendingGuess = null;
+  $('confirmBar').hidden = true;
   round++;
   current = mode === 'challenge' ? challenge.cities[round - 1] : pickCity();
   gameState = 'guessing';
   renderPrompt();
   updateStatsBar();
+  setHint('tap anywhere to place your guess');
   showHint();
 }
 
-function placeGuess(svgX, svgY) {
-  if (gameState !== 'guessing' || !current) return;
-  const { lat, lon } = svgToLatLon(svgX, svgY);
+// Provisional guess pin in MAP (group) coordinates — set by a tap/click, not yet
+// scored. The player can pan/zoom and re-tap to refine, then Confirm to commit.
+let _pendingGuess = null;
+
+function dropGuessPin(mx, my) {
+  if (gameState !== 'guessing' || !current || !_g) return;
+  _pendingGuess = { x: mx, y: my };
+  _g.selectAll('.gr-pending').remove();
+  const k = (_zoom && _svg) ? d3.zoomTransform(_svg.node()).k : 1;
+  _g.append('circle').attr('class', 'gr-mk gr-pending')
+    .attr('cx', mx).attr('cy', my).attr('r', (5.5 / k))
+    .attr('fill', '#b04a32').attr('stroke', '#faf2dd').attr('stroke-width', (1.6 / k))
+    .style('pointer-events', 'none');
+  $('confirmBar').hidden = false;
+  setHint('drag / pinch to zoom in • tap to move the pin');
+}
+
+function clearGuessPin() {
+  _pendingGuess = null;
+  if (_g) _g.selectAll('.gr-pending').remove();
+  $('confirmBar').hidden = true;
+  setHint('tap anywhere to place your guess');
+}
+
+function commitGuess() {
+  if (gameState !== 'guessing' || !_pendingGuess || !current) return;
+  const { x, y } = _pendingGuess;
+  const { lat, lon } = svgToLatLon(x, y);
   const km = haversineKm(lat, lon, current.lat, current.lon);
   const score = calcScore(km);
+  _pendingGuess = null;
+  if (_g) _g.selectAll('.gr-pending').remove();
+  $('confirmBar').hidden = true;
   gameState = 'revealed';
   hideHint();
-  drawResult(svgX, svgY);
+  drawResult(x, y);
   showResult(km, score);
   recordRound(km, score);
 }
@@ -1470,6 +1527,8 @@ function startSolo() {
 
 function boot() {
   $('nextBtn').addEventListener('click', onNext);
+  $('confirmBtn').addEventListener('click', commitGuess);
+  $('clearBtn').addEventListener('click', clearGuessPin);
   $('settingsBtn').addEventListener('click', openSettings);
   $('regionFilter').addEventListener('change', onRegionChange);
 
