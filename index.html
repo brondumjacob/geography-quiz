@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Geography Practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2e5cb;
+    --bg-2: #ebd9b6;
+    --surface: #faf2dd;
+    --ink: #2a1d12;
+    --ink-2: #5a4630;
+    --ink-soft: #8a7355;
+    --line: #5a4630;
+    --line-soft: #c2a978;
+    --accent: #b04a32;
+    --gold: #d49a17;
+    --moss: #6a8c44;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse at top left, #f4e7cc 0%, transparent 60%),
+      radial-gradient(ellipse at bottom right, #ecd9b0 0%, transparent 55%),
+      var(--bg);
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  .home {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 56px;
+  }
+
+  .home-header {
+    text-align: center;
+    padding-bottom: 26px;
+    border-bottom: 1.5px solid var(--line);
+    margin-bottom: 28px;
+  }
+  .home-title {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 900;
+    font-size: clamp(32px, 8vw, 52px);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 144;
+    margin: 0;
+  }
+  .home-subtitle {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+    color: var(--ink-soft);
+    font-size: clamp(14px, 3.5vw, 17px);
+    margin-top: 8px;
+  }
+
+  .card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(42,29,18,0.16);
+  }
+  .card:active { transform: translateY(0); }
+
+  /* Featured GeoRush card */
+  .card-featured {
+    padding: 26px 26px 24px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-featured::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at top right, rgba(212,154,23,0.16) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .badge-featured {
+    position: absolute;
+    top: 18px; right: 18px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--surface);
+    background: var(--gold);
+    border: 1.5px solid var(--line);
+    padding: 4px 10px;
+  }
+  .card-emoji-lg { font-size: 44px; line-height: 1; }
+  .card-featured h2 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 900;
+    font-size: clamp(26px, 6vw, 36px);
+    margin: 12px 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .card-featured p {
+    color: var(--ink-2);
+    font-size: 15px;
+    margin: 0 0 20px;
+    max-width: 42ch;
+  }
+  .cta {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    color: var(--surface);
+    background: var(--accent);
+    border: 1.5px solid var(--line);
+    padding: 12px 22px;
+  }
+
+  /* Quiz cards grid */
+  .quiz-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  @media (min-width: 560px) {
+    .quiz-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .card-quiz {
+    padding: 22px 20px 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .card-emoji-md { font-size: 32px; line-height: 1; }
+  .card-quiz h3 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 700;
+    font-size: 21px;
+    margin: 10px 0 3px;
+  }
+  .card-quiz .meta {
+    color: var(--ink-soft);
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 16px;
+  }
+  .cta-soft {
+    display: inline-block;
+    align-self: flex-start;
+    margin-top: auto;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1.5px solid var(--line);
+    padding: 9px 18px;
+  }
+  .card-quiz:hover .cta-soft { background: var(--bg-2); }
+
+  .home-footer {
+    text-align: center;
+    margin-top: 36px;
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<main class="home">
+  <header class="home-header">
+    <h1 class="home-title">🌍 Geography Practice</h1>
+    <p class="home-subtitle">sharpen your geography skills</p>
+  </header>
+
+  <a class="card card-featured" href="georush.html">
+    <span class="badge-featured">Featured</span>
+    <div class="card-emoji-lg">🌍</div>
+    <h2>GeoRush</h2>
+    <p>City pinpointing practice game. Tap the map to place a city, race your distance down, and challenge friends to beat your score.</p>
+    <span class="cta">Play GeoRush →</span>
+  </a>
+
+  <div class="quiz-grid">
+    <a class="card card-quiz" href="africa.html">
+      <div class="card-emoji-md">🗺️</div>
+      <h3>Africa Quiz</h3>
+      <p class="meta">54 countries</p>
+      <span class="cta-soft">Play →</span>
+    </a>
+    <a class="card card-quiz" href="world.html">
+      <div class="card-emoji-md">🌐</div>
+      <h3>World Quiz</h3>
+      <p class="meta">195 countries</p>
+      <span class="cta-soft">Play →</span>
+    </a>
+  </div>
+
+  <footer class="home-footer">Made for practice • no sign-up required</footer>
+</main>
+</body>
+</html>
