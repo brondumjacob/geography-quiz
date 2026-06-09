@@ -1,0 +1,10 @@
+# OS
+.DS_Store
+
+# Claude Code machine-local config (never commit)
+.claude/settings.local.json
+
+# Secrets
+.env
+.env.*
+*.local
