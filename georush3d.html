@@ -670,9 +670,22 @@ const CITIES = [
 let _globe = null;
 // Neutral view altitude: globe nearly fills the map card so taps land on its surface.
 const GLOBE_VIEW_ALT = 1.45;
-const GLOBE_TEX_HI = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg';
-const GLOBE_TEX_LO = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
+const GLOBE_TEX_HI  = 'https://raw.githubusercontent.com/franky-adl/threejs-earth/main/src/assets/Albedo.jpg';
+const GLOBE_TEX_MED = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg';
+const GLOBE_TEX_LO  = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
 let _texRequested = GLOBE_TEX_HI;
+// Max out anisotropic filtering so the texture stays sharp at grazing angles when zoomed in.
+function applyGlobeAnisotropy(retries = 20) {
+  if (!_globe) return;
+  let mat, renderer;
+  try { mat = _globe.globeMaterial(); renderer = _globe.renderer(); } catch { return; }
+  if (mat && mat.map && renderer) {
+    mat.map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    mat.map.needsUpdate = true;
+    return;
+  }
+  if (retries > 0) setTimeout(() => applyGlobeAnisotropy(retries - 1), 250);
+}
 function initGlobe() {
   if (typeof Globe === 'undefined') {
     showGlobeError();
@@ -685,6 +698,7 @@ function initGlobe() {
       .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
       .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
       .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
+      .onGlobeReady(() => applyGlobeAnisotropy())
       .width(el.clientWidth).height(el.clientHeight);
     const c = _globe.controls();
     c.enablePan = false;
@@ -702,10 +716,16 @@ function initGlobe() {
     _globe.onGlobeClick(({ lat, lng }) => dropGuessPin(lat, lng));
     _globe.pointOfView({ lat: 20, lng: 0, altitude: GLOBE_VIEW_ALT });
     hideMapStatus();
-    const _img = new Image();
-    _img.crossOrigin = 'anonymous';
-    _img.onerror = () => { _texRequested = GLOBE_TEX_LO; if (_globe) _globe.globeImageUrl(GLOBE_TEX_LO); };
-    _img.src = GLOBE_TEX_HI;
+    // Chained fallback: try 8k → 4k → low-res. Each confirmed load swaps the globe
+    // texture and re-applies anisotropic filtering (a new texture resets it).
+    const tryLoadTexture = (url, fallback) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { _texRequested = url; if (_globe) { _globe.globeImageUrl(url); applyGlobeAnisotropy(); } };
+      img.onerror = () => { if (fallback) fallback(); };
+      img.src = url;
+    };
+    tryLoadTexture(GLOBE_TEX_HI, () => tryLoadTexture(GLOBE_TEX_MED, () => tryLoadTexture(GLOBE_TEX_LO, null)));
     window.__test = Object.assign(window.__test || {}, {
       dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
       pointsCount: () => (_globe ? _globe.pointsData().length : 0),
@@ -714,6 +734,8 @@ function initGlobe() {
       state: () => gameState,
       minDistance: () => (_globe ? _globe.controls().minDistance : null),
       globeTexture: () => _texRequested,
+      globeAnisotropy: () => { try { return _globe.globeMaterial().map.anisotropy; } catch { return null; } },
+      maxAnisotropy: () => { try { return _globe.renderer().capabilities.getMaxAnisotropy(); } catch { return null; } },
       difficultyForRound: (r) => difficultyForRound(r),
       currentDifficulty: () => difficulty,
       hasChallengeApi: () => (typeof sbGet === 'function' && typeof sbPost === 'function' && typeof createChallenge === 'function'),

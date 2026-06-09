@@ -63,14 +63,22 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   session summary, Clear/Confirm flow) but renders an interactive **Globe.gl WebGL globe**
   instead of the 2D SVG map.
 - **CDN exception to Rule 1**: this page (and ONLY this page) loads external deps at
-  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`), a hi-res 4k Blue Marble day
-  texture (`raw.githubusercontent.com/turban/webgl-earth/.../2_no_clouds_4k.jpg`,
-  CORS-enabled) with a graceful fallback to the low-res
-  `unpkg.com/three-globe/example/img/earth-blue-marble.jpg` if it fails to load, plus the
-  topology bump and night-sky background textures from `unpkg.com/three-globe`. Hi-res is a
-  larger download → slightly slower first paint on mobile. The 2D
+  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`) and a day-Earth texture with a
+  three-step CORS-enabled fallback chain (`GLOBE_TEX_HI`/`MED`/`LO`): an 8k no-clouds
+  albedo (`raw.githubusercontent.com/franky-adl/threejs-earth/.../Albedo.jpg`, 8192×4096)
+  → 4k (`raw.githubusercontent.com/turban/webgl-earth/.../2_no_clouds_4k.jpg`) → low-res
+  (`unpkg.com/three-globe/example/img/earth-blue-marble.jpg`), plus the topology bump and
+  night-sky background textures from `unpkg.com/three-globe`. Each tier is preloaded via an
+  `Image`; the first that loads is swapped in (`tryLoadTexture` chain). The 8k is a larger
+  download → slower first paint on mobile, but much sharper when zoomed in. The 2D
   `georush.html` remains fully self-contained. (Country-border polygons were removed per
   request — the textured globe has no vector outlines.)
+- **Zoom sharpness (anisotropic filtering)**: `applyGlobeAnisotropy()` sets the globe
+  material map's `anisotropy` to the renderer's `getMaxAnisotropy()` so the texture stays
+  crisp at the grazing viewing angles that dominate the sphere — the single biggest
+  zoom-clarity win at zero download cost. It's called via `onGlobeReady` and re-applied on
+  every successful `tryLoadTexture` swap (a new texture resets anisotropy), and self-retries
+  (bounded) until the material's `.map` exists since three-globe loads textures async.
 - **Globe sizing / click target**: the neutral view altitude is `GLOBE_VIEW_ALT = 1.45`
   (and `controls.maxDistance = 360`) so the globe nearly fills the map card. This matters
   for clicking: `onGlobeClick` only fires when the ray hits the globe sphere, so a small/far
