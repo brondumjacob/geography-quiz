@@ -63,16 +63,18 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   session summary, Clear/Confirm flow) but renders an interactive **Globe.gl WebGL globe**
   instead of the 2D SVG map.
 - **CDN exception to Rule 1**: this page (and ONLY this page) loads external deps at
-  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`) and a day-Earth texture with a
+  runtime — Globe.gl (`cdn.jsdelivr.net/npm/globe.gl`), a day-Earth texture with a
   three-step CORS-enabled fallback chain (`GLOBE_TEX_HI`/`MED`/`LO`): an 8k no-clouds
   albedo (`raw.githubusercontent.com/franky-adl/threejs-earth/.../Albedo.jpg`, 8192×4096)
   → 4k (`raw.githubusercontent.com/turban/webgl-earth/.../2_no_clouds_4k.jpg`) → low-res
   (`unpkg.com/three-globe/example/img/earth-blue-marble.jpg`), plus the topology bump and
-  night-sky background textures from `unpkg.com/three-globe`. Each tier is preloaded via an
-  `Image`; the first that loads is swapped in (`tryLoadTexture` chain). The 8k is a larger
-  download → slower first paint on mobile, but much sharper when zoomed in. The 2D
-  `georush.html` remains fully self-contained. (Country-border polygons were removed per
-  request — the textured globe has no vector outlines.)
+  night-sky background textures from `unpkg.com/three-globe`, and (once the base texture is
+  up) live satellite tiles from `tiles.maps.eox.at` — see "Live satellite tiles" below. Each
+  base-texture tier is preloaded via an `Image`; the first that loads is swapped in
+  (`tryLoadTexture` chain). The 8k is a larger download → slower first paint on mobile, but
+  it's what's visible before the tile engine takes over (and the fallback if tiles never
+  load). The 2D `georush.html` remains fully self-contained. (Country-border polygons were
+  removed per request — the textured globe has no vector outlines.)
 - **Zoom sharpness (anisotropic filtering)**: `applyGlobeAnisotropy()` sets the globe
   material map's `anisotropy` to the renderer's `getMaxAnisotropy()` so the texture stays
   crisp at the grazing viewing angles that dominate the sphere — the single biggest
@@ -83,8 +85,38 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   (and `controls.maxDistance = 360`) so the globe nearly fills the map card. This matters
   for clicking: `onGlobeClick` only fires when the ray hits the globe sphere, so a small/far
   globe (the old `altitude: 2.5`) left most clicks landing in empty space and doing nothing.
-  `controls.minDistance` was lowered from 140 to `108` (globe radius is 100, so the camera
-  can approach to ~0.08 altitude) for maptap-style close-up zoom and more precise guesses.
+  `controls.minDistance` is `102` (globe radius is 100, so the camera can approach to ~0.02
+  altitude — down from `108`/~0.08) for maptap-style close-up zoom and more precise guesses.
+  Fixed `controls.rotateSpeed` spins far too fast to aim at that range, so a
+  `controls.addEventListener('change', ...)` handler scales it down with the current
+  altitude on every camera move.
+- **Live satellite tiles (maptap-grade zoom clarity)**: the fixed 8k texture has a hard
+  resolution ceiling — no more detail exists no matter how far you zoom. `tryEnableTileEngine()`
+  probes one low-zoom tile and, if reachable, hands three-globe's built-in
+  `.globeTileEngineUrl(fn)` / `.globeTileEngineMaxLevel(17)` a URL function
+  (`eoxTileUrl(x,y,l)`) pointing at EOX's public Sentinel-2 cloudless mosaic (WMTS,
+  `tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg` — cloud-free,
+  no labels, no API key, verified serving 200s z0–z18 worldwide including poles/mid-ocean).
+  three-globe then replaces the globe surface with a self-managed slippy-map quadtree that
+  streams higher-resolution tiles as the camera approaches — this is the same technique
+  maptap.gg uses (there: custom Sentinel-2 tiles), just via the officially supported API
+  instead of a hand-rolled tile overlay. If the probe fails (offline, blocked, CORS-hostile
+  network) the tile engine is never enabled and the base HI/MED/LO texture chain below is
+  what renders — nothing regresses. Attribution (CC BY-NC-SA 4.0) is the `.gr-credit` line
+  under the map card.
+  - **Click-routing gotcha (real bug, not a false lead)**: three-globe tags its outer globe
+    group `__globeObjType: 'globe'`, and `onGlobeClick`/`toGlobeCoords` resolve a raycast hit
+    by checking `hitObject.__globeObjType || hitObject.parent.__globeObjType` — **one parent
+    level only**. Individual tile-engine meshes were observed, briefly after activation,
+    nested an extra level deep (`globeGroup → container Group → tile mesh`), which means
+    their direct parent is untagged and clicks on them would silently fail to register. Once
+    the tile engine settles (confirmed via live scene-graph inspection) tiles become direct
+    children of the tagged group and resolve correctly, but `tagTileEngineContainer()` tags
+    the intermediate container defensively anyway (idempotent, retries until found) in case
+    that nested structure recurs. Runs once, right after `tryEnableTileEngine()` activates.
+  - Also bumped `renderer.setPixelRatio()` from globe.gl's internal cap of 2 to
+    `Math.min(3, devicePixelRatio)` in `onGlobeReady` — a free sharpness win on high-DPR
+    phones.
 - **Mobile width fix**: the map card uses `aspect-ratio: 1.7/1` + `min-height: 300px`. On
   narrow screens the aspect-derived height fell below 300px, so the browser back-computed
   card *width* from the min-height (300 × 1.7 = 510px), overflowing the viewport. Fixed by
@@ -94,12 +126,34 @@ Deviations from / additions to the original spec below, kept in sync as work lan
   `#map` keeps the globe sized to its real container after layout/fonts settle (the old
   `window.resize`-only listener never fired on initial settle). `overflow-x:hidden` on
   `html,body` is a final guard.
-- **Separate localStorage key**: `georush3d_stats` — 2D and 3D stats are independent.
+- **Separate localStorage keys**: `georush3d_stats` (2D and 3D stats are independent) and
+  `georush3d_prefs` (region filter + difficulty mode, restored on load via `loadPrefs()`/
+  `savePrefs()` in `boot()`/`onRegionChange`/`onDiffModeChange`). Kept separate from the stats
+  blob because `loadStats()` whitelists keys on read.
 - **Difficulty (solo)**: a header picker offers **Auto · Easy · Medium · Hard** (default
   Auto). Auto escalates by round number, maptap-style, looping every 10 rounds —
   `difficultyForRound(r)` maps `((r-1)%10)` to rounds 1–4 Easy, 5–6 Medium, 7–10 Hard, then
   repeats. This REPLACED the old rolling-average auto-scaler. Manual locks the pool to one
   level. The 📈/📉 toast fires when the Auto level changes between rounds.
+- **Practice region groups**: the region `<select>` (`#regionFilter`, and the matching
+  `#ccRegion` in the challenge-create modal) is grouped into "Continents" (the original 5)
+  and "Tough spots" — Africa, Asia, China, Russia, South America, Central America, Canada,
+  Mexico, plus a `🔥 All tough spots` combo entry. `REGION_GROUPS` (defined right after the
+  `C()` factory) holds `{ label, match }` predicates per key — `China`/`Russia`/`Canada`/
+  `Mexico` match on `c.country`; `SouthAmerica`/`CentralAmerica` match against a `Set` of
+  country names (multi-country sub-regions); the 5 continent keys and `Tough` match on
+  `c.region` / composition of the others. `groupFor(key)` degrades unknown/legacy keys to
+  `All` rather than an empty pool. `pickCity()` and `buildChallengeCities()` both filter via
+  `groupFor(regionFilter).match` instead of a direct `c.region ===` check. Russian cities are
+  tagged `region: 'Asia'` vs `'Europe'` by longitude > 60°E (Urals) — a simplification, not a
+  precise border, but keeps the continent filters honest (Vladivostok/Yakutsk never show
+  under Europe).
+- **City database expansion (320 → 435)**: China (3→30), Russia (1→30), Canada (6→24),
+  Mexico (5→23), Central America (8→22), South America (31→40) — appended as a clearly
+  labeled block at the end of `CITIES` rather than interleaved, so the original 320 entries
+  are untouched. Every practice group has at least one easy/medium/hard city. Verified via a
+  one-off Node script: no exact name+country duplicates, every new city's lat/lon falls
+  inside its country's bounding box, every `REGION_GROUPS` pool has all 3 difficulty tiers.
 - **Challenge mode (ported from 2D)**: `georush3d.html?c=ID` plays a fixed Supabase-backed
   city set on the globe with a live leaderboard — same `challenges`/`scores` tables, same
   live anon key, and the same `generateChallengeId`/`sbGet`/`sbPost`/`createChallenge`/
@@ -583,3 +637,14 @@ Layout:
 11. Verify SUPABASE_URL_HERE and SUPABASE_ANON_KEY_HERE are placeholders
     with the warning comment above them
 12. Build index.html — the home page (spec above)
+
+---
+
+## Personal Memory MCP
+
+**Server:** `https://memory.jacobmemory.dev/mcp`
+
+- **Session start**: call `search_memory` with keywords relevant to this project or the current task
+- **During session**: call `save_memory` when the user shares preferences, decisions, project context, or facts worth retaining long-term — not one-off remarks
+- Use tags: `work`, `preferences`, `projects/georush`, etc.
+- Tools: `save_memory` · `search_memory` · `list_memories` · `delete_memory`

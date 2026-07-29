@@ -59,6 +59,10 @@
     font-family: 'Manrope', sans-serif; font-weight: 600; font-size: 13px;
     color: var(--ink); background: var(--surface); border: 1.5px solid var(--line);
     padding: 8px 10px; border-radius: 0; cursor: pointer; -webkit-appearance: none; appearance: none;
+    max-width: 42vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gr-credit {
+    font-size: 10px; color: var(--ink-soft); text-align: right; margin: -8px 0 12px; opacity: 0.75;
   }
   .gr-icon-btn {
     font-size: 18px; line-height: 1; background: var(--surface); border: 1.5px solid var(--line);
@@ -204,11 +208,22 @@
       </select>
       <select id="regionFilter" class="gr-select" aria-label="Region filter">
         <option value="All">All regions</option>
-        <option value="Africa">Africa</option>
-        <option value="Europe">Europe</option>
-        <option value="Americas">Americas</option>
-        <option value="Asia">Asia</option>
-        <option value="Oceania">Oceania</option>
+        <optgroup label="Continents">
+          <option value="Africa">Africa</option>
+          <option value="Europe">Europe</option>
+          <option value="Americas">Americas</option>
+          <option value="Asia">Asia</option>
+          <option value="Oceania">Oceania</option>
+        </optgroup>
+        <optgroup label="Tough spots">
+          <option value="Tough">🔥 All tough spots</option>
+          <option value="China">China</option>
+          <option value="Russia">Russia</option>
+          <option value="SouthAmerica">South America</option>
+          <option value="CentralAmerica">Central America</option>
+          <option value="Canada">Canada</option>
+          <option value="Mexico">Mexico</option>
+        </optgroup>
       </select>
       <button id="settingsBtn" class="gr-icon-btn" aria-label="Settings">⚙️</button>
     </div>
@@ -227,6 +242,7 @@
     <div id="mapHint" class="gr-map-hint">tap anywhere to place your guess</div>
     <div id="mapStatus" class="gr-map-status">Loading globe…</div>
   </div>
+  <div class="gr-credit">Imagery: Sentinel-2 cloudless by EOX IT Services GmbH — contains modified Copernicus Sentinel data</div>
 
   <div class="gr-card">
     <div id="promptView" class="gr-prompt">
@@ -321,6 +337,40 @@ function verdict(km) {
 function C(name, country, flag, lat, lon, difficulty, region) {
   return { name, country, flag, lat, lon, difficulty, region };
 }
+
+// ── Practice region groups ───────────────────────────────────────────────────
+// Beyond the 5 continents, these let players drill specific "tough spot" pools
+// by country/sub-region rather than the coarse `region` field. Pure predicates —
+// no new field is added to city objects, so old data and old challenge rows
+// (which store their own `cities` array, see buildChallengeCities) are unaffected.
+const SOUTH_AMERICA_COUNTRIES = new Set([
+  'Brazil','Argentina','Chile','Peru','Colombia','Venezuela',
+  'Ecuador','Bolivia','Paraguay','Uruguay','Guyana','Suriname','French Guiana',
+]);
+const CENTRAL_AMERICA_COUNTRIES = new Set([
+  'Guatemala','Honduras','El Salvador','Nicaragua','Costa Rica','Panama','Belize',
+]);
+const TOUGH_GROUP_KEYS = ['Africa','Asia','China','Russia','SouthAmerica','CentralAmerica','Canada','Mexico'];
+
+const REGION_GROUPS = {
+  All:            { label: 'All regions',      match: () => true },
+  Africa:         { label: 'Africa',            match: c => c.region === 'Africa' },
+  Europe:         { label: 'Europe',            match: c => c.region === 'Europe' },
+  Americas:       { label: 'Americas',          match: c => c.region === 'Americas' },
+  Asia:           { label: 'Asia',              match: c => c.region === 'Asia' },
+  Oceania:        { label: 'Oceania',           match: c => c.region === 'Oceania' },
+  China:          { label: 'China',             match: c => c.country === 'China' },
+  Russia:         { label: 'Russia',            match: c => c.country === 'Russia' },
+  SouthAmerica:   { label: 'South America',     match: c => SOUTH_AMERICA_COUNTRIES.has(c.country) },
+  CentralAmerica: { label: 'Central America',   match: c => CENTRAL_AMERICA_COUNTRIES.has(c.country) },
+  Canada:         { label: 'Canada',            match: c => c.country === 'Canada' },
+  Mexico:         { label: 'Mexico',            match: c => c.country === 'Mexico' },
+  Tough:          { label: '🔥 All tough spots', match: c => TOUGH_GROUP_KEYS.some(k => REGION_GROUPS[k].match(c)) },
+};
+// Unknown/legacy keys (e.g. a malformed Supabase challenge row) degrade to "All"
+// rather than yielding an empty pool.
+function groupFor(key) { return REGION_GROUPS[key] || REGION_GROUPS.All; }
+
 const CITIES = [
   // ── AFRICA — easy ──
   C('Cairo','Egypt','🇪🇬',30.044,31.236,'easy','Africa'),
@@ -661,6 +711,153 @@ const CITIES = [
   C('Nadi','Fiji','🇫🇯',-17.798,177.420,'hard','Oceania'),
   C('Lae','Papua New Guinea','🇵🇬',-6.730,146.999,'hard','Oceania'),
   C('Rotorua','New Zealand','🇳🇿',-38.137,176.251,'hard','Oceania'),
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Practice-region expansion — deepens the pools behind the "tough spots"
+  // filters (China, Russia, Canada, Mexico, Central/South America) so each
+  // has a real easy/medium/hard spread. Appended rather than interleaved
+  // above to keep this diff isolated. See REGION_GROUPS for how these are
+  // grouped. Russia is split at the Urals (lon > 60°E → Asia) to keep the
+  // continent filters geographically honest — a simplification, not a
+  // precise Europe/Asia border.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── CHINA — easy ──
+  C('Shenzhen','China','🇨🇳',22.543,114.058,'easy','Asia'),
+  C('Chengdu','China','🇨🇳',30.658,104.066,'easy','Asia'),
+  C("Xi'an",'China','🇨🇳',34.267,108.953,'easy','Asia'),
+  C('Hangzhou','China','🇨🇳',30.274,120.155,'easy','Asia'),
+  C('Nanjing','China','🇨🇳',32.061,118.796,'easy','Asia'),
+  // ── CHINA — medium ──
+  C('Chongqing','China','🇨🇳',29.563,106.551,'medium','Asia'),
+  C('Wuhan','China','🇨🇳',30.593,114.305,'medium','Asia'),
+  C('Tianjin','China','🇨🇳',39.343,117.361,'medium','Asia'),
+  C('Shenyang','China','🇨🇳',41.805,123.431,'medium','Asia'),
+  C('Qingdao','China','🇨🇳',36.067,120.383,'medium','Asia'),
+  C('Kunming','China','🇨🇳',25.038,102.718,'medium','Asia'),
+  C('Changsha','China','🇨🇳',28.228,112.939,'medium','Asia'),
+  C('Zhengzhou','China','🇨🇳',34.746,113.625,'medium','Asia'),
+  C('Dalian','China','🇨🇳',38.914,121.615,'medium','Asia'),
+  C('Xiamen','China','🇨🇳',24.480,118.089,'medium','Asia'),
+  C('Suzhou','China','🇨🇳',31.298,120.585,'medium','Asia'),
+  C('Harbin','China','🇨🇳',45.803,126.535,'medium','Asia'),
+  // ── CHINA — hard ──
+  C('Lhasa','China','🇨🇳',29.652,91.132,'hard','Asia'),
+  C('Ürümqi','China','🇨🇳',43.826,87.616,'hard','Asia'),
+  C('Guiyang','China','🇨🇳',26.647,106.630,'hard','Asia'),
+  C('Lanzhou','China','🇨🇳',36.061,103.834,'hard','Asia'),
+  C('Hohhot','China','🇨🇳',40.842,111.749,'hard','Asia'),
+  C('Nanning','China','🇨🇳',22.817,108.366,'hard','Asia'),
+  C('Fuzhou','China','🇨🇳',26.074,119.296,'hard','Asia'),
+  C('Taiyuan','China','🇨🇳',37.870,112.549,'hard','Asia'),
+  C('Sanya','China','🇨🇳',18.252,109.511,'hard','Asia'),
+  C('Kashgar','China','🇨🇳',39.470,75.989,'hard','Asia'),
+
+  // ── RUSSIA — easy ──
+  C('Saint Petersburg','Russia','🇷🇺',59.939,30.315,'easy','Europe'),
+  C('Novosibirsk','Russia','🇷🇺',55.008,82.935,'easy','Asia'),
+  C('Yekaterinburg','Russia','🇷🇺',56.838,60.597,'easy','Asia'),
+  C('Kazan','Russia','🇷🇺',55.796,49.109,'easy','Europe'),
+  // ── RUSSIA — medium ──
+  C('Nizhny Novgorod','Russia','🇷🇺',56.296,43.936,'medium','Europe'),
+  C('Samara','Russia','🇷🇺',53.195,50.100,'medium','Europe'),
+  C('Omsk','Russia','🇷🇺',54.989,73.368,'medium','Asia'),
+  C('Rostov-on-Don','Russia','🇷🇺',47.235,39.712,'medium','Europe'),
+  C('Ufa','Russia','🇷🇺',54.735,55.958,'medium','Europe'),
+  C('Krasnoyarsk','Russia','🇷🇺',56.010,92.852,'medium','Asia'),
+  C('Perm','Russia','🇷🇺',58.010,56.229,'medium','Europe'),
+  C('Volgograd','Russia','🇷🇺',48.708,44.514,'medium','Europe'),
+  C('Vladivostok','Russia','🇷🇺',43.116,131.885,'medium','Asia'),
+  C('Irkutsk','Russia','🇷🇺',52.287,104.281,'medium','Asia'),
+  C('Sochi','Russia','🇷🇺',43.586,39.723,'medium','Europe'),
+  C('Kaliningrad','Russia','🇷🇺',54.710,20.452,'medium','Europe'),
+  C('Chelyabinsk','Russia','🇷🇺',55.160,61.402,'medium','Asia'),
+  // ── RUSSIA — hard ──
+  C('Murmansk','Russia','🇷🇺',68.970,33.075,'hard','Europe'),
+  C('Khabarovsk','Russia','🇷🇺',48.480,135.084,'hard','Asia'),
+  C('Yakutsk','Russia','🇷🇺',62.028,129.732,'hard','Asia'),
+  C('Norilsk','Russia','🇷🇺',69.349,88.201,'hard','Asia'),
+  C('Arkhangelsk','Russia','🇷🇺',64.539,40.518,'hard','Europe'),
+  C('Astrakhan','Russia','🇷🇺',46.347,48.033,'hard','Europe'),
+  C('Tyumen','Russia','🇷🇺',57.153,65.534,'hard','Asia'),
+  C('Barnaul','Russia','🇷🇺',53.356,83.760,'hard','Asia'),
+  C('Magadan','Russia','🇷🇺',59.560,150.803,'hard','Asia'),
+  C('Petropavlovsk-Kamchatsky','Russia','🇷🇺',53.045,158.646,'hard','Asia'),
+  C('Vorkuta','Russia','🇷🇺',67.499,64.030,'hard','Asia'),
+  C('Anadyr','Russia','🇷🇺',64.734,177.517,'hard','Asia'),
+
+  // ── CANADA — easy ──
+  C('Edmonton','Canada','🇨🇦',53.546,-113.491,'easy','Americas'),
+  C('Québec City','Canada','🇨🇦',46.813,-71.208,'easy','Americas'),
+  C('Victoria','Canada','🇨🇦',48.428,-123.365,'easy','Americas'),
+  // ── CANADA — medium ──
+  C('Winnipeg','Canada','🇨🇦',49.895,-97.138,'medium','Americas'),
+  C('Saskatoon','Canada','🇨🇦',52.133,-106.670,'medium','Americas'),
+  C('Regina','Canada','🇨🇦',50.445,-104.618,'medium','Americas'),
+  C("St. John's",'Canada','🇨🇦',47.561,-52.712,'medium','Americas'),
+  C('Hamilton','Canada','🇨🇦',43.256,-79.870,'medium','Americas'),
+  C('Windsor','Canada','🇨🇦',42.314,-83.036,'medium','Americas'),
+  C('Kelowna','Canada','🇨🇦',49.888,-119.496,'medium','Americas'),
+  C('Thunder Bay','Canada','🇨🇦',48.382,-89.246,'medium','Americas'),
+  C('Sudbury','Canada','🇨🇦',46.492,-80.993,'medium','Americas'),
+  // ── CANADA — hard ──
+  C('Yellowknife','Canada','🇨🇦',62.454,-114.372,'hard','Americas'),
+  C('Whitehorse','Canada','🇨🇦',60.721,-135.057,'hard','Americas'),
+  C('Iqaluit','Canada','🇨🇦',63.749,-68.517,'hard','Americas'),
+  C('Charlottetown','Canada','🇨🇦',46.238,-63.134,'hard','Americas'),
+  C('Fredericton','Canada','🇨🇦',45.964,-66.643,'hard','Americas'),
+  C('Churchill','Canada','🇨🇦',58.769,-94.165,'hard','Americas'),
+
+  // ── MEXICO — easy ──
+  C('Puebla','Mexico','🇲🇽',19.042,-98.198,'easy','Americas'),
+  C('Mérida','Mexico','🇲🇽',20.967,-89.592,'easy','Americas'),
+  // ── MEXICO — medium ──
+  C('Querétaro','Mexico','🇲🇽',20.588,-100.389,'medium','Americas'),
+  C('Chihuahua','Mexico','🇲🇽',28.632,-106.069,'medium','Americas'),
+  C('Hermosillo','Mexico','🇲🇽',29.073,-110.955,'medium','Americas'),
+  C('Culiacán','Mexico','🇲🇽',24.809,-107.394,'medium','Americas'),
+  C('Mazatlán','Mexico','🇲🇽',23.249,-106.411,'medium','Americas'),
+  C('San Luis Potosí','Mexico','🇲🇽',22.156,-100.986,'medium','Americas'),
+  C('Toluca','Mexico','🇲🇽',19.293,-99.656,'medium','Americas'),
+  C('León','Mexico','🇲🇽',21.122,-101.683,'medium','Americas'),
+  C('Veracruz','Mexico','🇲🇽',19.173,-96.134,'medium','Americas'),
+  // ── MEXICO — hard ──
+  C('Acapulco','Mexico','🇲🇽',16.863,-99.883,'hard','Americas'),
+  C('Villahermosa','Mexico','🇲🇽',17.989,-92.928,'hard','Americas'),
+  C('Tuxtla Gutiérrez','Mexico','🇲🇽',16.752,-93.116,'hard','Americas'),
+  C('Durango','Mexico','🇲🇽',24.027,-104.653,'hard','Americas'),
+  C('Campeche','Mexico','🇲🇽',19.845,-90.523,'hard','Americas'),
+  C('La Paz','Mexico','🇲🇽',24.142,-110.313,'hard','Americas'),
+  C('Oaxaca','Mexico','🇲🇽',17.067,-96.723,'hard','Americas'),
+
+  // ── CENTRAL AMERICA — easy ──
+  C('Colón','Panama','🇵🇦',9.359,-79.900,'easy','Americas'),
+  C('Puntarenas','Costa Rica','🇨🇷',9.978,-84.838,'easy','Americas'),
+  // ── CENTRAL AMERICA — medium ──
+  C('Quetzaltenango','Guatemala','🇬🇹',14.835,-91.518,'medium','Americas'),
+  C('David','Panama','🇵🇦',8.433,-82.433,'medium','Americas'),
+  C('Santa Ana','El Salvador','🇸🇻',13.994,-89.560,'medium','Americas'),
+  C('Liberia','Costa Rica','🇨🇷',10.635,-85.437,'medium','Americas'),
+  C('Granada','Nicaragua','🇳🇮',11.934,-85.956,'medium','Americas'),
+  C('San Miguel','El Salvador','🇸🇻',13.483,-88.178,'medium','Americas'),
+  C('Belize City','Belize','🇧🇿',17.504,-88.198,'medium','Americas'),
+  // ── CENTRAL AMERICA — hard ──
+  C('Puerto Barrios','Guatemala','🇬🇹',15.729,-88.594,'hard','Americas'),
+  C('Trujillo','Honduras','🇭🇳',15.919,-85.951,'hard','Americas'),
+  C('Escuintla','Guatemala','🇬🇹',14.305,-90.785,'hard','Americas'),
+  C('Bluefields','Nicaragua','🇳🇮',12.008,-83.757,'hard','Americas'),
+  C('Chinandega','Nicaragua','🇳🇮',12.629,-87.131,'hard','Americas'),
+
+  // ── SOUTH AMERICA — fills thin spots in the existing pool ──
+  C('Santa Cruz','Bolivia','🇧🇴',-17.783,-63.182,'hard','Americas'),
+  C('Belo Horizonte','Brazil','🇧🇷',-19.917,-43.935,'medium','Americas'),
+  C('Porto Alegre','Brazil','🇧🇷',-30.033,-51.230,'medium','Americas'),
+  C('Fortaleza','Brazil','🇧🇷',-3.732,-38.527,'medium','Americas'),
+  C('Barranquilla','Colombia','🇨🇴',10.968,-74.781,'medium','Americas'),
+  C('Concepción','Chile','🇨🇱',-36.827,-73.050,'medium','Americas'),
+  C('Maracay','Venezuela','🇻🇪',10.246,-67.596,'hard','Americas'),
+  C('Iquitos','Peru','🇵🇪',-3.749,-73.253,'hard','Americas'),
+  C('Barquisimeto','Venezuela','🇻🇪',10.063,-69.323,'hard','Americas'),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -674,7 +871,9 @@ const GLOBE_TEX_HI  = 'https://raw.githubusercontent.com/franky-adl/threejs-eart
 const GLOBE_TEX_MED = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg';
 const GLOBE_TEX_LO  = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
 let _texRequested = GLOBE_TEX_HI;
-// Max out anisotropic filtering so the texture stays sharp at grazing angles when zoomed in.
+// Max out anisotropic filtering so the base texture stays sharp at grazing angles.
+// Only matters before the tile engine (below) takes over the globe surface, or if
+// it never does (offline / blocked) — kept as the fallback sharpness lever.
 function applyGlobeAnisotropy(retries = 20) {
   if (!_globe) return;
   let mat, renderer;
@@ -686,6 +885,58 @@ function applyGlobeAnisotropy(retries = 20) {
   }
   if (retries > 0) setTimeout(() => applyGlobeAnisotropy(retries - 1), 250);
 }
+
+// ── Zoom-independent clarity: live satellite tiles ──────────────────────────
+// The fixed 8k texture above has a hard resolution ceiling — no matter how far
+// you zoom, there is no more detail to show. three-globe's built-in tile engine
+// (globeTileEngineUrl) replaces the globe surface with a slippy-map quadtree
+// that streams higher-resolution tiles as the camera gets closer, the same
+// approach maptap.gg uses (there: custom Sentinel-2 tiles). Here we point it at
+// EOX's public Sentinel-2 cloudless mosaic — cloud-free, no labels, no API key,
+// verified serving 200s from z0 through z18 worldwide (including poles and mid-
+// ocean).
+// Attribution (CC BY-NC-SA 4.0) lives in the `.gr-credit` line under the map card.
+const TILE_ENGINE_MAX_LEVEL = 17;
+function eoxTileUrl(x, y, l) {
+  return `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/${l}/${y}/${x}.jpg`;
+}
+let _tileEngineActive = false;
+// three-globe tags its outer globe group `__globeObjType: 'globe'`, and
+// onGlobeClick/toGlobeCoords resolve a raycast hit by checking
+// `hitObject.__globeObjType || hitObject.parent.__globeObjType` — one parent
+// level only. The plain sphere mesh sits directly under that tagged group, so
+// it resolves fine. The tile engine's individual tile meshes do NOT: they sit
+// two levels down (globeGroup → tile-engine container Group → tile mesh), so
+// their direct parent is the untagged container and every click on a tile
+// silently fails to register. Tag that container ourselves so tile hits
+// resolve exactly like the sphere did — the container is created once and
+// persists for the globe's lifetime, so this only needs to run once.
+function tagTileEngineContainer(retries = 20) {
+  if (!_globe) return;
+  let globeGroup = null;
+  try { _globe.scene().traverse(o => { if (o.__globeObjType === 'globe') globeGroup = o; }); } catch { return; }
+  if (globeGroup) {
+    const tileContainer = globeGroup.children.find(c => c.type === 'Group');
+    if (tileContainer) { tileContainer.__globeObjType = 'globe'; return; }
+  }
+  if (retries > 0) setTimeout(() => tagTileEngineContainer(retries - 1), 250);
+}
+// Probe a single low-zoom tile before switching over — if EOX is unreachable
+// (offline, blocked, CORS-hostile network) the globe simply keeps its base
+// texture, exactly like the existing HI→MED→LO fallback below.
+function tryEnableTileEngine() {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    if (!_globe) return;
+    _globe.globeTileEngineUrl(eoxTileUrl).globeTileEngineMaxLevel(TILE_ENGINE_MAX_LEVEL);
+    _tileEngineActive = true;
+    tagTileEngineContainer();
+  };
+  img.onerror = () => { _tileEngineActive = false; };
+  img.src = eoxTileUrl(1, 1, 2);
+}
+
 function initGlobe() {
   if (typeof Globe === 'undefined') {
     showGlobeError();
@@ -698,15 +949,28 @@ function initGlobe() {
       .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
       .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
       .showAtmosphere(true).atmosphereColor('#bcd0d4').atmosphereAltitude(0.18)
-      .onGlobeReady(() => applyGlobeAnisotropy())
+      .onGlobeReady(() => {
+        applyGlobeAnisotropy();
+        // globe.gl caps devicePixelRatio at 2 internally; raising it is a free
+        // sharpness win on high-DPR phones (capped at 3 to bound GPU cost).
+        try { _globe.renderer().setPixelRatio(Math.min(3, window.devicePixelRatio || 1)); } catch {}
+      })
       .width(el.clientWidth).height(el.clientHeight);
     const c = _globe.controls();
     c.enablePan = false;
-    c.minDistance = 108;
+    c.minDistance = 102;
     c.maxDistance = 360;
     c.autoRotate = false;
     c.rotateSpeed = 0.7;
     c.zoomSpeed = 0.8;
+    // Fixed rotateSpeed spins wildly too fast to aim once minDistance lets you
+    // zoom this close (altitude ~0.02) — scale it down with altitude so close-up
+    // aiming stays controllable while the world view still rotates briskly.
+    c.addEventListener('change', () => {
+      if (!_globe) return;
+      const alt = _globe.pointOfView().altitude;
+      c.rotateSpeed = Math.min(0.7, Math.max(0.08, 0.7 * alt / 0.5));
+    });
     const syncSize = () => {
       const w = el.clientWidth, h = el.clientHeight;
       if (w > 0 && h > 0) _globe.width(w).height(h);
@@ -718,6 +982,8 @@ function initGlobe() {
     hideMapStatus();
     // Chained fallback: try 8k → 4k → low-res. Each confirmed load swaps the globe
     // texture and re-applies anisotropic filtering (a new texture resets it).
+    // Runs independently of the tile-engine probe below — whichever activates,
+    // the base texture chain is what shows through if the tile engine never does.
     const tryLoadTexture = (url, fallback) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -726,6 +992,7 @@ function initGlobe() {
       img.src = url;
     };
     tryLoadTexture(GLOBE_TEX_HI, () => tryLoadTexture(GLOBE_TEX_MED, () => tryLoadTexture(GLOBE_TEX_LO, null)));
+    tryEnableTileEngine();
     window.__test = Object.assign(window.__test || {}, {
       dropByLatLng: (lat, lng) => dropGuessPin(lat, lng),
       pointsCount: () => (_globe ? _globe.pointsData().length : 0),
@@ -736,6 +1003,19 @@ function initGlobe() {
       globeTexture: () => _texRequested,
       globeAnisotropy: () => { try { return _globe.globeMaterial().map.anisotropy; } catch { return null; } },
       maxAnisotropy: () => { try { return _globe.renderer().capabilities.getMaxAnisotropy(); } catch { return null; } },
+      tileEngineActive: () => _tileEngineActive,
+      tileContainerTagged: () => {
+        try {
+          let globeGroup = null;
+          _globe.scene().traverse(o => { if (o.__globeObjType === 'globe') globeGroup = o; });
+          const tileContainer = globeGroup && globeGroup.children.find(c => c.type === 'Group');
+          return !!(tileContainer && tileContainer.__globeObjType === 'globe');
+        } catch { return null; }
+      },
+      tileEngineMaxLevel: () => TILE_ENGINE_MAX_LEVEL,
+      pixelRatio: () => { try { return _globe.renderer().getPixelRatio(); } catch { return null; } },
+      rotateSpeed: () => { try { return _globe.controls().rotateSpeed; } catch { return null; } },
+      poolSize: (groupKey) => CITIES.filter(groupFor(groupKey).match).length,
       difficultyForRound: (r) => difficultyForRound(r),
       currentDifficulty: () => difficulty,
       hasChallengeApi: () => (typeof sbGet === 'function' && typeof sbPost === 'function' && typeof createChallenge === 'function'),
@@ -839,7 +1119,25 @@ let sessionScoreTotal = 0;
 let sessionBest = { km: Infinity, city: '' };
 
 const STORAGE_KEY = 'georush3d_stats';
+const PREFS_KEY = 'georush3d_prefs';
 const PLAY_URL = 'https://brondumjacob.github.io/geography-quiz/georush3d.html';
+
+// ── UI preferences (region filter + difficulty mode), separate from stats ──
+function loadPrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY));
+    if (raw && typeof raw === 'object') {
+      return {
+        regionFilter: (raw.regionFilter && REGION_GROUPS[raw.regionFilter]) ? raw.regionFilter : 'All',
+        difficultyMode: ['auto', 'easy', 'medium', 'hard'].includes(raw.difficultyMode) ? raw.difficultyMode : 'auto',
+      };
+    }
+  } catch {}
+  return { regionFilter: 'All', difficultyMode: 'auto' };
+}
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ regionFilter, difficultyMode })); } catch {}
+}
 
 const DIFF_META = {
   easy:   { badge: '🟢 Easy',   label: 'Easy' },
@@ -935,10 +1233,10 @@ function showResult(km, score) {
 
 // ── Round flow ───────────────────────────────────────────────────────────────
 function pickCity() {
-  let pool = CITIES.filter(c => c.difficulty === difficulty);
-  if (regionFilter !== 'All') pool = pool.filter(c => c.region === regionFilter);
+  const group = groupFor(regionFilter);
+  let pool = CITIES.filter(c => c.difficulty === difficulty && group.match(c));
   if (!pool.length) {
-    pool = CITIES.filter(c => regionFilter === 'All' || c.region === regionFilter);
+    pool = CITIES.filter(group.match);
   }
   if (!pool.length) pool = CITIES;
   // Avoid immediate repeat of the same city when possible.
@@ -1044,6 +1342,7 @@ ${diffEmoji} ${diffLabel} difficulty
 // ── Region filter ────────────────────────────────────────────────────────────
 function onRegionChange(e) {
   regionFilter = e.target.value;
+  savePrefs();
   // Take effect on the next round; current round continues unaffected.
   if (gameState === 'guessing') {
     // restart current round with new filter for immediacy
@@ -1053,6 +1352,7 @@ function onRegionChange(e) {
 
 function onDiffModeChange(e) {
   difficultyMode = e.target.value;
+  savePrefs();
   if (gameState === 'guessing') { round--; startRound(); }
 }
 
@@ -1107,11 +1407,22 @@ function showChallengeCreate() {
       <label for="ccRegion">Region</label>
       <select id="ccRegion">
         <option value="All">All regions</option>
-        <option value="Africa">Africa</option>
-        <option value="Europe">Europe</option>
-        <option value="Americas">Americas</option>
-        <option value="Asia">Asia</option>
-        <option value="Oceania">Oceania</option>
+        <optgroup label="Continents">
+          <option value="Africa">Africa</option>
+          <option value="Europe">Europe</option>
+          <option value="Americas">Americas</option>
+          <option value="Asia">Asia</option>
+          <option value="Oceania">Oceania</option>
+        </optgroup>
+        <optgroup label="Tough spots">
+          <option value="Tough">🔥 All tough spots</option>
+          <option value="China">China</option>
+          <option value="Russia">Russia</option>
+          <option value="SouthAmerica">South America</option>
+          <option value="CentralAmerica">Central America</option>
+          <option value="Canada">Canada</option>
+          <option value="Mexico">Mexico</option>
+        </optgroup>
       </select>
     </div>
     <div class="gr-field">
@@ -1136,7 +1447,7 @@ function showChallengeCreate() {
 }
 
 function buildChallengeCities(region, rounds) {
-  let pool = CITIES.filter(c => region === 'All' || c.region === region);
+  let pool = CITIES.filter(groupFor(region).match);
   if (pool.length < rounds) pool = CITIES.slice();
   // Shuffle and take `rounds`.
   const shuffled = pool.slice();
@@ -1211,7 +1522,7 @@ async function initChallenge() {
 function promptChallengeName() {
   openModal(`
     <h2>🏆 GeoRush Challenge</h2>
-    <p class="sub">${challenge.rounds} ${challenge.region && challenge.region !== 'All' ? escapeHtml(challenge.region) + ' ' : ''}cities${challenge.created_by ? ' • by ' + escapeHtml(challenge.created_by) : ''}. Enter your name to play.</p>
+    <p class="sub">${challenge.rounds} ${challenge.region && challenge.region !== 'All' ? escapeHtml(groupFor(challenge.region).label) + ' ' : ''}cities${challenge.created_by ? ' • by ' + escapeHtml(challenge.created_by) : ''}. Enter your name to play.</p>
     <div class="gr-field">
       <label for="cpName">Your name</label>
       <input class="gr-input" id="cpName" maxlength="20" placeholder="e.g. Sarah" />
@@ -1261,7 +1572,7 @@ function showLeaderboardLoading() {
 
 async function renderLeaderboard(mine) {
   const rows = await sbGet(`scores?challenge_id=eq.${encodeURIComponent(challenge.id)}&order=total_score.desc&select=*`);
-  const regionLabel = challenge.region && challenge.region !== 'All' ? `${challenge.region} ` : '';
+  const regionLabel = challenge.region && challenge.region !== 'All' ? `${groupFor(challenge.region).label} ` : '';
   let body;
   if (!rows) {
     body = `<p class="gr-err">⚠️ Could not load the leaderboard (network issue).</p>`;
@@ -1314,6 +1625,14 @@ function startSolo() {
 }
 
 function boot() {
+  if (mode !== 'challenge') {
+    const prefs = loadPrefs();
+    regionFilter = prefs.regionFilter;
+    difficultyMode = prefs.difficultyMode;
+    $('regionFilter').value = regionFilter;
+    $('diffMode').value = difficultyMode;
+  }
+
   $('nextBtn').addEventListener('click', onNext);
   $('confirmBtn').addEventListener('click', commitGuess);
   $('clearBtn').addEventListener('click', clearGuessPin);
